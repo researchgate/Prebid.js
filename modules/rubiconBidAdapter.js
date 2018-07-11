@@ -1,17 +1,9 @@
-import * as Adapter from 'src/adapter';
-import bidfactory from 'src/bidfactory';
-import bidmanager from 'src/bidmanager';
-import adaptermanager from 'src/adaptermanager';
 import * as utils from 'src/utils';
-import { ajax } from 'src/ajax';
-import { STATUS } from 'src/constants';
+import {registerBidder} from 'src/adapters/bidderFactory';
+import {config} from 'src/config';
+import {BANNER, VIDEO} from 'src/mediaTypes';
 
-const RUBICON_BIDDER_CODE = 'rubicon';
-
-// use deferred function call since version isn't defined yet at this point
-function getIntegration() {
-  return 'pbjs_lite_' + $$PREBID_GLOBAL$$.version;
-}
+const INTEGRATION = 'pbjs_lite_v$prebid.version$';
 
 function isSecure() {
   return location.protocol === 'https:';
@@ -20,15 +12,18 @@ function isSecure() {
 // use protocol relative urls for http or https
 const FASTLANE_ENDPOINT = '//fastlane.rubiconproject.com/a/api/fastlane.json';
 const VIDEO_ENDPOINT = '//fastlane-adv.rubiconproject.com/v1/auction/video';
+const SYNC_ENDPOINT = 'https://eus.rubiconproject.com/usync.html';
 
 const TIMEOUT_BUFFER = 500;
 
 var sizeMap = {
   1: '468x60',
   2: '728x90',
+  5: '120x90',
   8: '120x600',
   9: '160x600',
   10: '300x600',
+  13: '200x200',
   14: '250x250',
   15: '300x250',
   16: '336x280',
@@ -42,6 +37,7 @@ var sizeMap = {
   43: '320x50',
   44: '300x50',
   48: '300x300',
+  53: '1024x768',
   54: '300x1050',
   55: '970x90',
   57: '970x250',
@@ -49,6 +45,7 @@ var sizeMap = {
   59: '320x80',
   60: '320x150',
   61: '1000x1000',
+  64: '580x500',
   65: '640x480',
   67: '320x480',
   68: '1800x1000',
@@ -63,242 +60,463 @@ var sizeMap = {
   101: '480x320',
   102: '768x1024',
   103: '480x280',
+  108: '320x240',
   113: '1000x300',
   117: '320x100',
   125: '800x250',
-  126: '200x600'
+  126: '200x600',
+  144: '980x600',
+  159: '320x250',
+  195: '600x300',
+  199: '640x200',
+  213: '1030x590',
+  214: '980x360',
+  232: '580x400',
+  257: '400x600'
 };
 utils._each(sizeMap, (item, key) => sizeMap[item] = key);
 
-function RubiconAdapter() {
-  function _callBids(bidderRequest) {
-    var bids = bidderRequest.bids || [];
+export const spec = {
+  code: 'rubicon',
+  aliases: ['rubiconLite'],
+  supportedMediaTypes: [BANNER, VIDEO],
+  /**
+   * @param {object} bid
+   * @return boolean
+   */
+  isBidRequestValid: function (bid) {
+    if (typeof bid.params !== 'object') {
+      return false;
+    }
 
-    bids.forEach(bid => {
-      try {
-        // Video endpoint only accepts POST calls
-        if (bid.mediaType === 'video') {
-          ajax(
-            VIDEO_ENDPOINT,
-            {
-              success: bidCallback,
-              error: bidError
-            },
-            buildVideoRequestPayload(bid, bidderRequest),
-            {
-              withCredentials: true
-            }
-          );
-        } else {
-          ajax(
-            buildOptimizedCall(bid),
-            {
-              success: bidCallback,
-              error: bidError
-            },
-            undefined,
-            {
-              withCredentials: true
-            }
-          );
+    if (!/^\d+$/.test(bid.params.accountId)) {
+      return false;
+    }
+
+    if (hasVideoMediaType(bid)) {
+      // Log warning if mediaTypes contains both 'banner' and 'video'
+      if (utils.deepAccess(bid, `mediaTypes.${VIDEO}.context`) === 'instream' || bid.mediaType === VIDEO) {
+        if (typeof utils.deepAccess(bid, 'params.video.size_id') === 'undefined') {
+          utils.logError('Rubicon bid adapter Error: size id is missing for instream video request.');
+          return false;
         }
-      } catch (err) {
-        utils.logError('Error sending rubicon request for placement code ' + bid.placementCode, null, err);
-        addErrorBid();
-      }
-
-      function bidCallback(responseText) {
-        try {
-          utils.logMessage('XHR callback function called for ad ID: ' + bid.bidId);
-          handleRpCB(responseText, bid);
-        } catch (err) {
-          if (typeof err === 'string') {
-            utils.logWarn(`${err} when processing rubicon response for placement code ${bid.placementCode}`);
-          } else {
-            utils.logError('Error processing rubicon response for placement code ' + bid.placementCode, null, err);
-          }
-          addErrorBid();
+      } else if (utils.deepAccess(bid, `mediaTypes.${VIDEO}.context`) === 'outstream') {
+        if (utils.deepAccess(bid, 'params.video.size_id') !== 203) {
+          utils.logWarn('Rubicon bid adapter Warning: outstream video is sending invalid size id, converting size id to 203.');
         }
+      } else {
+        utils.logError('Rubicon bid adapter Error: no instream or outstream context defined in mediaTypes.');
+        return false;
+      }
+      if (typeof utils.deepAccess(bid, `mediaTypes.${BANNER}`) !== 'undefined') {
+        utils.logWarn('Rubicon bid adapter Warning: video and banner requested for same ad unit, continuing with video request, multi-format request is not supported by rubicon yet.');
+      }
+    }
+    return parseSizes(bid).length > 0;
+  },
+  /**
+   * @param {BidRequest[]} bidRequests
+   * @param bidderRequest
+   * @return ServerRequest[]
+   */
+  buildRequests: function (bidRequests, bidderRequest) {
+    // separate video bids because the requests are structured differently
+    let requests = [];
+    const videoRequests = bidRequests.filter(hasVideoMediaType).map(bidRequest => {
+      bidRequest.startTime = new Date().getTime();
+
+      let params = bidRequest.params;
+      let size = parseSizes(bidRequest);
+
+      let data = {
+        page_url: _getPageUrl(bidRequest),
+        resolution: _getScreenResolution(),
+        account_id: params.accountId,
+        integration: INTEGRATION,
+        'x_source.tid': bidRequest.transactionId,
+        timeout: bidderRequest.timeout - (Date.now() - bidderRequest.auctionStart + TIMEOUT_BUFFER),
+        stash_creatives: true,
+        slots: []
+      };
+
+      // Define the slot object
+      let slotData = {
+        site_id: params.siteId,
+        zone_id: params.zoneId,
+        position: params.position === 'atf' || params.position === 'btf' ? params.position : 'unknown',
+        floor: parseFloat(params.floor) > 0.01 ? params.floor : 0.01,
+        element_id: bidRequest.adUnitCode,
+        name: bidRequest.adUnitCode,
+        width: size[0],
+        height: size[1],
+        size_id: utils.deepAccess(bidRequest, `mediaTypes.${VIDEO}.context`) === 'outstream' ? 203 : params.video.size_id
+      };
+
+      if (params.video) {
+        data.ae_pass_through_parameters = params.video.aeParams;
+        slotData.language = params.video.language;
       }
 
-      function bidError(err, xhr) {
-        utils.logError('Request for rubicon responded with:', xhr.status, err);
-        addErrorBid();
+      if (params.inventory && typeof params.inventory === 'object') {
+        slotData.inventory = params.inventory;
       }
 
-      function addErrorBid() {
-        let badBid = bidfactory.createBid(STATUS.NO_BID, bid);
-        badBid.bidderCode = bid.bidder;
-        bidmanager.addBidResponse(bid.placementCode, badBid);
+      if (params.keywords && Array.isArray(params.keywords)) {
+        slotData.keywords = params.keywords;
+      }
+
+      if (params.visitor && typeof params.visitor === 'object') {
+        slotData.visitor = params.visitor;
+      }
+
+      data.slots.push(slotData);
+
+      if (bidderRequest.gdprConsent) {
+        // add 'gdpr' only if 'gdprApplies' is defined
+        if (typeof bidderRequest.gdprConsent.gdprApplies === 'boolean') {
+          data.gdpr = Number(bidderRequest.gdprConsent.gdprApplies);
+        }
+        data.gdpr_consent = bidderRequest.gdprConsent.consentString;
+      }
+
+      return {
+        method: 'POST',
+        url: VIDEO_ENDPOINT,
+        data,
+        bidRequest
       }
     });
-  }
 
-  function _getScreenResolution() {
-    return [window.screen.width, window.screen.height].join('x');
-  }
-
-  function _getDigiTrustQueryParams() {
-    function getDigiTrustId() {
-      let digiTrustUser = window.DigiTrust && window.DigiTrust.getUser({member: 'T9QSFKPDN9'});
-      return digiTrustUser && digiTrustUser.success && digiTrustUser.identity || null;
-    }
-    let digiTrustId = getDigiTrustId();
-    // Verify there is an ID and this user has not opted out
-    if (!digiTrustId || digiTrustId.privacy && digiTrustId.privacy.optout) {
-      return [];
-    }
-    return [
-      'dt.id', digiTrustId.id,
-      'dt.keyv', digiTrustId.keyv
-    ];
-  }
-
-  function buildVideoRequestPayload(bid, bidderRequest) {
-    bid.startTime = new Date().getTime();
-
-    let params = bid.params;
-
-    if (!params || typeof params.video !== 'object') {
-      throw 'Invalid Video Bid';
-    }
-
-    let size;
-    if (params.video.playerWidth && params.video.playerHeight) {
-      size = [
-        params.video.playerWidth,
-        params.video.playerHeight
-      ];
-    } else if (
-        Array.isArray(bid.sizes) && bid.sizes.length > 0 &&
-        Array.isArray(bid.sizes[0]) && bid.sizes[0].length > 1
-    ) {
-      size = bid.sizes[0];
+    if (config.getConfig('rubicon.singleRequest') !== true) {
+      // bids are not grouped if single request mode is not enabled
+      requests = videoRequests.concat(bidRequests.filter(bidRequest => !hasVideoMediaType(bidRequest)).map(bidRequest => {
+        const bidParams = spec.createSlotParams(bidRequest, bidderRequest);
+        return {
+          method: 'GET',
+          url: FASTLANE_ENDPOINT,
+          data: spec.getOrderedParams(bidParams).reduce((paramString, key) => {
+            const propValue = bidParams[key];
+            return ((utils.isStr(propValue) && propValue !== '') || utils.isNumber(propValue)) ? `${paramString}${key}=${encodeURIComponent(propValue)}&` : paramString;
+          }, '') + `slots=1&rand=${Math.random()}`,
+          bidRequest
+        };
+      }));
     } else {
-      throw 'Invalid Video Bid - No size provided';
+      // single request requires bids to be grouped by site id into a single request
+      // note: utils.groupBy wasn't used because deep property access was needed
+      const nonVideoRequests = bidRequests.filter(bidRequest => !hasVideoMediaType(bidRequest));
+      const groupedBidRequests = nonVideoRequests.reduce((groupedBids, bid) => {
+        (groupedBids[bid.params['siteId']] = groupedBids[bid.params['siteId']] || []).push(bid);
+        return groupedBids;
+      }, {});
+
+      requests = videoRequests.concat(Object.keys(groupedBidRequests).map(bidGroupKey => {
+        let bidsInGroup = groupedBidRequests[bidGroupKey];
+
+        // fastlane SRA has a limit of 10 slots
+        if (bidsInGroup.length > 10) {
+          utils.logWarn(`Rubicon bid adapter Warning: single request mode has a limit of 10 bids: ${bidsInGroup.length - 10} bids were not sent`);
+          bidsInGroup = bidsInGroup.slice(0, 10);
+        }
+
+        const combinedSlotParams = spec.combineSlotUrlParams(bidsInGroup.map(bidRequest => {
+          return spec.createSlotParams(bidRequest, bidderRequest);
+        }));
+
+        // SRA request returns grouped bidRequest arrays not a plain bidRequest
+        return {
+          method: 'GET',
+          url: FASTLANE_ENDPOINT,
+          data: spec.getOrderedParams(combinedSlotParams).reduce((paramString, key) => {
+            const propValue = combinedSlotParams[key];
+            return ((utils.isStr(propValue) && propValue !== '') || utils.isNumber(propValue)) ? `${paramString}${key}=${encodeURIComponent(propValue)}&` : paramString;
+          }, '') + `slots=${bidsInGroup.length}&rand=${Math.random()}`,
+          bidRequest: bidsInGroup,
+        };
+      }));
+    }
+    return requests;
+  },
+
+  getOrderedParams: function(params) {
+    const containsTgV = /^tg_v/
+    const containsTgI = /^tg_i/
+
+    const orderedParams = [
+      'account_id',
+      'site_id',
+      'zone_id',
+      'size_id',
+      'alt_size_ids',
+      'p_pos',
+      'gdpr',
+      'gdpr_consent',
+      'rf',
+      'dt.id',
+      'dt.keyv',
+      'dt.pref',
+      'p_geo.latitude',
+      'p_geo.longitude',
+      'kw'
+    ].concat(Object.keys(params).filter(item => containsTgV.test(item)))
+      .concat(Object.keys(params).filter(item => containsTgI.test(item)))
+      .concat([
+        'tk_flint',
+        'x_source.tid',
+        'p_screen_res',
+        'rp_floor',
+        'rp_secure',
+        'tk_user_key'
+      ]);
+
+    return orderedParams.concat(Object.keys(params).filter(item => (orderedParams.indexOf(item) === -1)));
+  },
+
+  /**
+   * @summary combines param values from an array of slots into a single semicolon delineated value
+   * or just one value if they are all the same.
+   * @param {Object[]} aSlotUrlParams - example [{p1: 'foo', p2: 'test'}, {p2: 'test'}, {p1: 'bar', p2: 'test'}]
+   * @return {Object} - example {p1: 'foo;;bar', p2: 'test'}
+   */
+  combineSlotUrlParams: function(aSlotUrlParams) {
+    // if only have params for one slot, return those params
+    if (aSlotUrlParams.length === 1) {
+      return aSlotUrlParams[0];
     }
 
-    let postData = {
-      page_url: !params.referrer ? utils.getTopWindowUrl() : params.referrer,
-      resolution: _getScreenResolution(),
-      account_id: params.accountId,
-      integration: getIntegration(),
-      timeout: bidderRequest.timeout - (Date.now() - bidderRequest.auctionStart + TIMEOUT_BUFFER),
-      stash_creatives: true,
-      ae_pass_through_parameters: params.video.aeParams,
-      slots: []
-    };
+    // reduce param values from all slot objects into an array of values in a single object
+    const oCombinedSlotUrlParams = aSlotUrlParams.reduce(function(oCombinedParams, oSlotUrlParams, iIndex) {
+      Object.keys(oSlotUrlParams).forEach(function(param) {
+        if (!oCombinedParams.hasOwnProperty(param)) {
+          oCombinedParams[param] = new Array(aSlotUrlParams.length); // initialize array;
+        }
+        // insert into the proper element of the array
+        oCombinedParams[param].splice(iIndex, 1, oSlotUrlParams[param]);
+      });
 
-    // Define the slot object
-    let slotData = {
-      site_id: params.siteId,
-      zone_id: params.zoneId,
-      position: params.position || 'btf',
-      floor: parseFloat(params.floor) > 0.01 ? params.floor : 0.01,
-      element_id: bid.placementCode,
-      name: bid.placementCode,
-      language: params.video.language,
-      width: size[0],
-      height: size[1]
-    };
+      return oCombinedParams;
+    }, {});
 
-    // check and add inventory, keywords, visitor and size_id data
-    if (params.video.size_id) {
-      slotData.size_id = params.video.size_id;
-    } else {
-      throw 'Invalid Video Bid - Invalid Ad Type!';
-    }
+    // convert arrays into semicolon delimited strings
+    const re = new RegExp('^([^;]*)(;\\1)+$'); // regex to test for duplication
 
-    if (params.inventory && typeof params.inventory === 'object') {
-      slotData.inventory = params.inventory;
-    }
+    Object.keys(oCombinedSlotUrlParams).forEach(function(param) {
+      const sValues = oCombinedSlotUrlParams[param].join(';');
+      // consolidate param values into one value if they are all the same
+      const match = sValues.match(re);
+      oCombinedSlotUrlParams[param] = match ? match[1] : sValues;
+    });
 
-    if (params.keywords && Array.isArray(params.keywords)) {
-      slotData.keywords = params.keywords;
-    }
+    return oCombinedSlotUrlParams;
+  },
 
-    if (params.visitor && typeof params.visitor === 'object') {
-      slotData.visitor = params.visitor;
-    }
+  /**
+   * @param {BidRequest} bidRequest
+   * @param {Object} bidderRequest
+   * @returns {Object} - object key values named and formatted as slot params
+   */
+  createSlotParams: function(bidRequest, bidderRequest) {
+    bidRequest.startTime = new Date().getTime();
 
-    postData.slots.push(slotData);
-
-    return (JSON.stringify(postData));
-  }
-
-  function buildOptimizedCall(bid) {
-    bid.startTime = new Date().getTime();
-
-    var {
-      accountId,
-      siteId,
-      zoneId,
-      position,
-      floor,
-      keywords,
-      visitor,
-      inventory,
-      userId,
-      referrer: pageUrl
-    } = bid.params;
-
-    // defaults
-    floor = (floor = parseFloat(floor)) > 0.01 ? floor : 0.01;
-    position = position || 'btf';
+    const params = bidRequest.params;
 
     // use rubicon sizes if provided, otherwise adUnit.sizes
-    var parsedSizes = RubiconAdapter.masSizeOrdering(Array.isArray(bid.params.sizes)
-      ? bid.params.sizes.map(size => (sizeMap[size] || '').split('x')) : bid.sizes
-    );
+    const parsedSizes = parseSizes(bidRequest);
 
-    if (parsedSizes.length < 1) {
-      throw 'no valid sizes';
+    const [latitude, longitude] = params.latLong || [];
+
+    const data = {
+      'account_id': params.accountId,
+      'site_id': params.siteId,
+      'zone_id': params.zoneId,
+      'size_id': parsedSizes[0],
+      'alt_size_ids': parsedSizes.slice(1).join(',') || undefined,
+      'p_pos': params.position === 'atf' || params.position === 'btf' ? params.position : 'unknown',
+      'rp_floor': (params.floor = parseFloat(params.floor)) > 0.01 ? params.floor : 0.01,
+      'rp_secure': isSecure() ? '1' : '0',
+      'tk_flint': INTEGRATION,
+      'x_source.tid': bidRequest.transactionId,
+      'p_screen_res': _getScreenResolution(),
+      'kw': Array.isArray(params.keywords) ? params.keywords.join(',') : '',
+      'tk_user_key': params.userId,
+      'p_geo.latitude': isNaN(parseFloat(latitude)) ? undefined : parseFloat(latitude).toFixed(4),
+      'p_geo.longitude': isNaN(parseFloat(longitude)) ? undefined : parseFloat(longitude).toFixed(4),
+      'tg_fl.eid': bidRequest.code,
+      'rf': _getPageUrl(bidRequest)
+    };
+
+    if (bidderRequest.gdprConsent) {
+      // add 'gdpr' only if 'gdprApplies' is defined
+      if (typeof bidderRequest.gdprConsent.gdprApplies === 'boolean') {
+        data['gdpr'] = Number(bidderRequest.gdprConsent.gdprApplies);
+      }
+      data['gdpr_consent'] = bidderRequest.gdprConsent.consentString;
     }
 
-    if (!/^\d+$/.test(accountId)) {
-      throw 'invalid accountId provided';
+    // visitor properties
+    if (params.visitor !== null && typeof params.visitor === 'object') {
+      Object.keys(params.visitor).forEach((key) => {
+        data[`tg_v.${key}`] = params.visitor[key].toString();
+      });
     }
 
-    // using array to honor ordering. if order isn't important (it shouldn't be), an object would probably be preferable
-    var queryString = [
-      'account_id', accountId,
-      'site_id', siteId,
-      'zone_id', zoneId,
-      'size_id', parsedSizes[0],
-      'alt_size_ids', parsedSizes.slice(1).join(',') || undefined,
-      'p_pos', position,
-      'rp_floor', floor,
-      'rp_secure', isSecure() ? '1' : '0',
-      'tk_flint', getIntegration(),
-      'p_screen_res', _getScreenResolution(),
-      'kw', keywords,
-      'tk_user_key', userId
-    ];
-
-    if (visitor !== null && typeof visitor === 'object') {
-      utils._each(visitor, (item, key) => queryString.push(`tg_v.${key}`, item));
+    // inventory properties
+    if (params.inventory !== null && typeof params.inventory === 'object') {
+      Object.keys(params.inventory).forEach((key) => {
+        data[`tg_i.${key}`] = params.inventory[key].toString();
+      });
     }
 
-    if (inventory !== null && typeof inventory === 'object') {
-      utils._each(inventory, (item, key) => queryString.push(`tg_i.${key}`, item));
+    // digitrust properties
+    const digitrustParams = _getDigiTrustQueryParams();
+    Object.keys(digitrustParams).forEach(paramKey => {
+      data[paramKey] = digitrustParams[paramKey];
+    });
+
+    return data;
+  },
+
+  /**
+   * @param {*} responseObj
+   * @param {BidRequest|Object.<string, BidRequest[]>} bidRequest - if request was SRA the bidRequest argument will be a keyed BidRequest array object,
+   * non-SRA responses return a plain BidRequest object
+   * @return {Bid[]} An array of bids which
+   */
+  interpretResponse: function (responseObj, {bidRequest}) {
+    responseObj = responseObj.body;
+
+    // check overall response
+    if (!responseObj || typeof responseObj !== 'object') {
+      return [];
     }
 
-    queryString.push(
-      'rand', Math.random(),
-      'rf', !pageUrl ? utils.getTopWindowUrl() : pageUrl
-    );
+    let ads = responseObj.ads;
 
-    queryString = queryString.concat(_getDigiTrustQueryParams());
+    // video ads array is wrapped in an object
+    if (typeof bidRequest === 'object' && !Array.isArray(bidRequest) && hasVideoMediaType(bidRequest) && typeof ads === 'object') {
+      ads = ads[bidRequest.adUnitCode];
+    }
 
-    return queryString.reduce(
-      (memo, curr, index) =>
-        index % 2 === 0 && queryString[index + 1] !== undefined
-        ? memo + curr + '=' + encodeURIComponent(queryString[index + 1]) + '&' : memo,
-      FASTLANE_ENDPOINT + '?'
-    ).slice(0, -1); // remove trailing &
+    // check the ad response
+    if (!Array.isArray(ads) || ads.length < 1) {
+      return [];
+    }
+
+    return ads.reduce((bids, ad, i) => {
+      if (ad.status !== 'ok') {
+        return bids;
+      }
+
+      // associate bidRequests; assuming ads matches bidRequest
+      const associatedBidRequest = Array.isArray(bidRequest) ? bidRequest[i] : bidRequest;
+
+      if (associatedBidRequest && typeof associatedBidRequest === 'object') {
+        let bid = {
+          requestId: associatedBidRequest.bidId,
+          currency: 'USD',
+          creativeId: ad.creative_id,
+          cpm: ad.cpm || 0,
+          dealId: ad.deal,
+          ttl: 300, // 5 minutes
+          netRevenue: config.getConfig('rubicon.netRevenue') || false,
+          rubicon: {
+            advertiserId: ad.advertiser, networkId: ad.network
+          }
+        };
+
+        if (ad.creative_type) {
+          bid.mediaType = ad.creative_type;
+        }
+
+        if (ad.creative_type === VIDEO) {
+          bid.width = associatedBidRequest.params.video.playerWidth;
+          bid.height = associatedBidRequest.params.video.playerHeight;
+          bid.vastUrl = ad.creative_depot_url;
+          bid.impression_id = ad.impression_id;
+          bid.videoCacheKey = ad.impression_id;
+        } else {
+          bid.ad = _renderCreative(ad.script, ad.impression_id);
+          [bid.width, bid.height] = sizeMap[ad.size_id].split('x').map(num => Number(num));
+        }
+
+        // add server-side targeting
+        bid.rubiconTargeting = (Array.isArray(ad.targeting) ? ad.targeting : [])
+          .reduce((memo, item) => {
+            memo[item.key] = item.values[0];
+            return memo;
+          }, {'rpfl_elemid': associatedBidRequest.adUnitCode});
+
+        bids.push(bid);
+      } else {
+        utils.logError(`Rubicon bid adapter Error: bidRequest undefined at index position:${i}`, bidRequest, responseObj);
+      }
+
+      return bids;
+    }, []).sort((adA, adB) => {
+      return (adB.cpm || 0.0) - (adA.cpm || 0.0);
+    });
+  },
+  getUserSyncs: function (syncOptions, responses, gdprConsent) {
+    if (!hasSynced && syncOptions.iframeEnabled) {
+      // data is only assigned if params are available to pass to SYNC_ENDPOINT
+      let params = '';
+
+      if (gdprConsent && typeof gdprConsent.consentString === 'string') {
+        // add 'gdpr' only if 'gdprApplies' is defined
+        if (typeof gdprConsent.gdprApplies === 'boolean') {
+          params += `?gdpr=${Number(gdprConsent.gdprApplies)}&gdpr_consent=${gdprConsent.consentString}`;
+        } else {
+          params += `?gdpr_consent=${gdprConsent.consentString}`;
+        }
+      }
+
+      hasSynced = true;
+      return {
+        type: 'iframe',
+        url: SYNC_ENDPOINT + params
+      };
+    }
+  }
+};
+
+function _getScreenResolution() {
+  return [window.screen.width, window.screen.height].join('x');
+}
+
+function _getDigiTrustQueryParams() {
+  function getDigiTrustId() {
+    let digiTrustUser = window.DigiTrust && (config.getConfig('digiTrustId') || window.DigiTrust.getUser({member: 'T9QSFKPDN9'}));
+    return (digiTrustUser && digiTrustUser.success && digiTrustUser.identity) || null;
   }
 
-  let _renderCreative = (script, impId) => `<html>
+  let digiTrustId = getDigiTrustId();
+  // Verify there is an ID and this user has not opted out
+  if (!digiTrustId || (digiTrustId.privacy && digiTrustId.privacy.optout)) {
+    return [];
+  }
+  return {
+    'dt.id': digiTrustId.id,
+    'dt.keyv': digiTrustId.keyv,
+    'dt.pref': 0
+  };
+}
+
+/**
+ * @param {BidRequest} bidRequest
+ * @returns {string}
+ */
+function _getPageUrl(bidRequest) {
+  let page_url = config.getConfig('pageUrl');
+  if (bidRequest.params.referrer) {
+    page_url = bidRequest.params.referrer;
+  } else if (!page_url) {
+    page_url = utils.getTopWindowUrl();
+  }
+  return bidRequest.params.secure ? page_url.replace(/^http:/i, 'https:') : page_url;
+}
+
+function _renderCreative(script, impId) {
+  return `<html>
 <head><script type='text/javascript'>inDapIF=true;</script></head>
 <body style='margin : 0; padding: 0;'>
 <!-- Rubicon Project Ad Tag -->
@@ -307,118 +525,89 @@ function RubiconAdapter() {
 </div>
 </body>
 </html>`;
-
-  function handleRpCB(responseText, bidRequest) {
-    var responseObj = JSON.parse(responseText), // can throw
-      ads = responseObj.ads,
-      adResponseKey = bidRequest.placementCode;
-
-    // check overall response
-    if (typeof responseObj !== 'object' || responseObj.status !== 'ok') {
-      throw 'bad response';
-    }
-
-    // video ads array is wrapped in an object
-    if (bidRequest.mediaType === 'video' && typeof ads === 'object') {
-      ads = ads[adResponseKey];
-    }
-
-    // check the ad response
-    if (!Array.isArray(ads) || ads.length < 1) {
-      throw 'invalid ad response';
-    }
-
-    // if there are multiple ads, sort by CPM
-    ads = ads.sort(_adCpmSort);
-
-    ads.forEach(ad => {
-      if (ad.status !== 'ok') {
-        throw 'bad ad status';
-      }
-
-      // store bid response
-      // bid status is good (indicating 1)
-      var bid = bidfactory.createBid(STATUS.GOOD, bidRequest);
-      bid.creative_id = ad.ad_id;
-      bid.bidderCode = bidRequest.bidder;
-      bid.cpm = ad.cpm || 0;
-      bid.dealId = ad.deal;
-      if (bidRequest.mediaType === 'video') {
-        bid.width = bidRequest.params.video.playerWidth;
-        bid.height = bidRequest.params.video.playerHeight;
-        bid.vastUrl = ad.creative_depot_url;
-        bid.descriptionUrl = ad.impression_id;
-        bid.impression_id = ad.impression_id;
-      } else {
-        bid.ad = _renderCreative(ad.script, ad.impression_id);
-        [bid.width, bid.height] = sizeMap[ad.size_id].split('x').map(num => Number(num));
-      }
-
-      // add server-side targeting
-      bid.rubiconTargeting = (Array.isArray(ad.targeting) ? ad.targeting : [])
-        .reduce((memo, item) => {
-          memo[item.key] = item.values[0];
-          return memo;
-        }, {'rpfl_elemid': bidRequest.placementCode});
-
-      try {
-        bidmanager.addBidResponse(bidRequest.placementCode, bid);
-      } catch (err) {
-        utils.logError('Error from addBidResponse', null, err);
-      }
-    });
-  }
-
-  function _adCpmSort(adA, adB) {
-    return (adB.cpm || 0.0) - (adA.cpm || 0.0);
-  }
-
-  return Object.assign(Adapter.createNew(RUBICON_BIDDER_CODE), {
-    callBids: _callBids,
-    createNew: RubiconAdapter.createNew
-  });
 }
 
-RubiconAdapter.masSizeOrdering = function(sizes) {
-  const MAS_SIZE_PRIORITY = [15, 2, 9];
+function parseSizes(bid) {
+  let params = bid.params;
+  if (hasVideoMediaType(bid)) {
+    let size = [];
+    if (params.video && params.video.playerWidth && params.video.playerHeight) {
+      size = [
+        params.video.playerWidth,
+        params.video.playerHeight
+      ];
+    } else if (Array.isArray(utils.deepAccess(bid, 'mediaTypes.video.playerSize')) && bid.mediaTypes.video.playerSize.length === 1) {
+      size = bid.mediaTypes.video.playerSize[0];
+    } else if (Array.isArray(bid.sizes) && bid.sizes.length > 0 && Array.isArray(bid.sizes[0]) && bid.sizes[0].length > 1) {
+      size = bid.sizes[0];
+    }
+    return size;
+  }
 
+  // deprecated: temp legacy support
+  let sizes = [];
+  if (Array.isArray(params.sizes)) {
+    sizes = params.sizes;
+  } else if (typeof utils.deepAccess(bid, 'mediaTypes.banner.sizes') !== 'undefined') {
+    sizes = mapSizes(bid.mediaTypes.banner.sizes);
+  } else if (Array.isArray(bid.sizes) && bid.sizes.length > 0) {
+    sizes = mapSizes(bid.sizes)
+  } else {
+    utils.logWarn('Warning: no sizes are setup or found');
+  }
+
+  return masSizeOrdering(sizes);
+}
+
+function mapSizes(sizes) {
   return utils.parseSizesInput(sizes)
-    // map sizes while excluding non-matches
+  // map sizes while excluding non-matches
     .reduce((result, size) => {
       let mappedSize = parseInt(sizeMap[size], 10);
       if (mappedSize) {
         result.push(mappedSize);
       }
       return result;
-    }, [])
-    .sort((first, second) => {
-      // sort by MAS_SIZE_PRIORITY priority order
-      let firstPriority = MAS_SIZE_PRIORITY.indexOf(first),
-        secondPriority = MAS_SIZE_PRIORITY.indexOf(second);
+    }, []);
+}
 
-      if (firstPriority > -1 || secondPriority > -1) {
-        if (firstPriority === -1) {
-          return 1;
-        }
-        if (secondPriority === -1) {
-          return -1;
-        }
-        return firstPriority - secondPriority;
+/**
+ * Test if bid has mediaType or mediaTypes set for video.
+ * note: 'mediaType' has been deprecated, however support will remain for a transitional period
+ * @param {BidRequest} bidRequest
+ * @returns {boolean}
+ */
+export function hasVideoMediaType(bidRequest) {
+  return bidRequest.mediaType === VIDEO || typeof utils.deepAccess(bidRequest, `mediaTypes.${VIDEO}`) !== 'undefined';
+}
+
+export function masSizeOrdering(sizes) {
+  const MAS_SIZE_PRIORITY = [15, 2, 9];
+
+  return sizes.sort((first, second) => {
+    // sort by MAS_SIZE_PRIORITY priority order
+    const firstPriority = MAS_SIZE_PRIORITY.indexOf(first);
+    const secondPriority = MAS_SIZE_PRIORITY.indexOf(second);
+
+    if (firstPriority > -1 || secondPriority > -1) {
+      if (firstPriority === -1) {
+        return 1;
       }
+      if (secondPriority === -1) {
+        return -1;
+      }
+      return firstPriority - secondPriority;
+    }
 
-      // and finally ascending order
-      return first - second;
-    });
-};
+    // and finally ascending order
+    return first - second;
+  });
+}
 
-RubiconAdapter.createNew = function() {
-  return new RubiconAdapter();
-};
+var hasSynced = false;
 
-adaptermanager.registerBidAdapter(new RubiconAdapter, RUBICON_BIDDER_CODE, {
-  supportedMediaTypes: ['video']
-});
-adaptermanager.aliasBidAdapter(RUBICON_BIDDER_CODE, 'rubiconLite');
+export function resetUserSync() {
+  hasSynced = false;
+}
 
-module.exports = RubiconAdapter;
-
+registerBidder(spec);

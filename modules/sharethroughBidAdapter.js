@@ -1,109 +1,151 @@
-var utils = require('src/utils.js');
-var bidmanager = require('src/bidmanager.js');
-var bidfactory = require('src/bidfactory.js');
-var ajax = require('src/ajax.js').ajax;
-var adaptermanager = require('src/adaptermanager');
+import { registerBidder } from 'src/adapters/bidderFactory';
 
-const STR_BIDDER_CODE = 'sharethrough';
-const STR_VERSION = '1.2.0';
+const VERSION = '3.0.1';
+const BIDDER_CODE = 'sharethrough';
+const STR_ENDPOINT = document.location.protocol + '//btlr.sharethrough.com/header-bid/v1';
 
-var SharethroughAdapter = function SharethroughAdapter() {
-  const str = {};
-  str.STR_BTLR_HOST = document.location.protocol + '//btlr.sharethrough.com';
-  str.STR_BEACON_HOST = document.location.protocol + '//b.sharethrough.com/butler?';
-  str.placementCodeSet = {};
-  str.ajax = ajax;
+export const sharethroughAdapterSpec = {
+  code: BIDDER_CODE,
 
-  function _callBids(params) {
-    const bids = params.bids;
+  isBidRequestValid: bid => !!bid.params.pkey && bid.bidder === BIDDER_CODE,
 
-    // cycle through bids
-    for (let i = 0; i < bids.length; i += 1) {
-      const bidRequest = bids[i];
-      str.placementCodeSet[bidRequest.placementCode] = bidRequest;
-      const scriptUrl = _buildSharethroughCall(bidRequest);
-      str.ajax(scriptUrl, _createCallback(bidRequest), undefined, {withCredentials: true});
+  buildRequests: (bidRequests, bidderRequest) => {
+    return bidRequests.map(bid => {
+      let query = {
+        bidId: bid.bidId,
+        placement_key: bid.params.pkey,
+        hbVersion: '$prebid.version$',
+        strVersion: VERSION,
+        hbSource: 'prebid',
+        consent_required: false
+      };
+
+      if (bidderRequest && bidderRequest.gdprConsent && bidderRequest.gdprConsent.consentString) {
+        query.consent_string = bidderRequest.gdprConsent.consentString;
+      }
+
+      if (bidderRequest && bidderRequest.gdprConsent) {
+        query.consent_required = !!bidderRequest.gdprConsent.gdprApplies;
+      }
+
+      // Data that does not need to go to the server,
+      // but we need as part of interpretResponse()
+      const strData = {
+        stayInIframe: bid.params.iframe,
+        iframeSize: bid.params.iframeSize,
+        sizes: bid.sizes
+      }
+
+      return {
+        method: 'GET',
+        url: STR_ENDPOINT,
+        data: query,
+        strData: strData
+      };
+    })
+  },
+
+  interpretResponse: ({ body }, req) => {
+    if (!body || !body.creatives || !body.creatives.length) {
+      return [];
     }
-  }
 
-  function _createCallback(bidRequest) {
-    return (bidResponse) => {
-      _strcallback(bidRequest, bidResponse);
-    };
-  }
-
-  function _buildSharethroughCall(bid) {
-    const pkey = utils.getBidIdParameter('pkey', bid.params);
-
-    let host = str.STR_BTLR_HOST;
-
-    let url = host + '/header-bid/v1?';
-    url = utils.tryAppendQueryString(url, 'bidId', bid.bidId);
-    url = utils.tryAppendQueryString(url, 'placement_key', pkey);
-    url = appendEnvFields(url);
-
-    return url;
-  }
-
-  function _strcallback(bidObj, bidResponse) {
-    try {
-      bidResponse = JSON.parse(bidResponse);
-      const bidId = bidResponse.bidId;
-      const bid = bidfactory.createBid(1, bidObj);
-      bid.bidderCode = STR_BIDDER_CODE;
-      bid.cpm = bidResponse.creatives[0].cpm;
-      const size = bidObj.sizes[0];
-      bid.width = size[0];
-      bid.height = size[1];
-      bid.adserverRequestId = bidResponse.adserverRequestId;
-      str.placementCodeSet[bidObj.placementCode].adserverRequestId = bidResponse.adserverRequestId;
-
-      bid.pkey = utils.getBidIdParameter('pkey', bidObj.params);
-
-      const windowLocation = `str_response_${bidId}`;
-      const bidJsonString = JSON.stringify(bidResponse);
-      bid.ad = `<div data-str-native-key="${bid.pkey}" data-stx-response-name='${windowLocation}'>
-                </div>
-                <script>var ${windowLocation} = ${bidJsonString}</script>
-                <script src="//native.sharethrough.com/assets/sfp-set-targeting.js"></script>
-                <script type='text/javascript'>
-                (function() {
-                    var sfp_js = document.createElement('script');
-                    sfp_js.src = "//native.sharethrough.com/assets/sfp.js";
-                    sfp_js.type = 'text/javascript';
-                    sfp_js.charset = 'utf-8';
-                    try {
-                        window.top.document.getElementsByTagName('body')[0].appendChild(sfp_js);
-                    } catch (e) {
-                      console.log(e);
-                    }
-                })();
-                </script>`;
-      bidmanager.addBidResponse(bidObj.placementCode, bid);
-    } catch (e) {
-      _handleInvalidBid(bidObj);
+    const creative = body.creatives[0];
+    let size = [0, 0];
+    if (req.strData.stayInIframe) {
+      size = req.strData.iframeSize != undefined
+        ? req.strData.iframeSize
+        : getLargestSize(req.strData.sizes);
     }
+
+    return [{
+      requestId: req.data.bidId,
+      width: size[0],
+      height: size[1],
+      cpm: creative.cpm,
+      creativeId: creative.creative.creative_key,
+      dealId: creative.creative.deal_id,
+      currency: 'USD',
+      netRevenue: true,
+      ttl: 360,
+      ad: generateAd(body, req)
+    }];
+  },
+
+  getUserSyncs: (syncOptions, serverResponses) => {
+    const syncs = [];
+    const shouldCookieSync = syncOptions.pixelEnabled &&
+                             serverResponses.length > 0 &&
+                             serverResponses[0].body &&
+                             serverResponses[0].body.cookieSyncUrls;
+
+    if (shouldCookieSync) {
+      serverResponses[0].body.cookieSyncUrls.forEach(url => {
+        syncs.push({ type: 'image', url: url });
+      });
+    }
+
+    return syncs;
+  }
+}
+
+function getLargestSize(sizes) {
+  function area(size) {
+    return size[0] * size[1];
   }
 
-  function _handleInvalidBid(bidObj) {
-    const bid = bidfactory.createBid(2, bidObj);
-    bidmanager.addBidResponse(bidObj.placementCode, bid);
+  return sizes.reduce((prev, current) => {
+    if (area(current) > area(prev)) {
+      return current
+    } else {
+      return prev
+    }
+  }, [0, 0]);
+}
+
+function generateAd(body, req) {
+  const strRespId = `str_response_${req.data.bidId}`;
+
+  let adMarkup = `
+    <div data-str-native-key="${req.data.placement_key}" data-stx-response-name="${strRespId}">
+    </div>
+    <script>var ${strRespId} = "${b64EncodeUnicode(JSON.stringify(body))}"</script>
+  `
+
+  if (req.strData.stayInIframe) {
+    // Don't break out of iframe
+    adMarkup = adMarkup + `<script src="//native.sharethrough.com/assets/sfp.js"></script>`
+  } else {
+    // Break out of iframe
+    adMarkup = adMarkup + `
+      <script src="//native.sharethrough.com/assets/sfp-set-targeting.js"></script>
+      <script>
+        (function() {
+          if (!(window.STR && window.STR.Tag) && !(window.top.STR && window.top.STR.Tag)) {
+            const sfp_js = document.createElement('script');
+            sfp_js.src = "//native.sharethrough.com/assets/sfp.js";
+            sfp_js.type = 'text/javascript';
+            sfp_js.charset = 'utf-8';
+            try {
+                window.top.document.getElementsByTagName('body')[0].appendChild(sfp_js);
+            } catch (e) {
+              console.log(e);
+            }
+          }
+        })()
+    </script>`
   }
 
-  function appendEnvFields(url) {
-    url = utils.tryAppendQueryString(url, 'hbVersion', '$prebid.version$');
-    url = utils.tryAppendQueryString(url, 'strVersion', STR_VERSION);
-    url = utils.tryAppendQueryString(url, 'hbSource', 'prebid');
+  return adMarkup;
+}
 
-    return url;
-  }
+// See https://developer.mozilla.org/en-US/docs/Web/API/WindowBase64/Base64_encoding_and_decoding#The_Unicode_Problem
+function b64EncodeUnicode(str) {
+  return btoa(
+    encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+      function toSolidBytes(match, p1) {
+        return String.fromCharCode('0x' + p1);
+      }));
+}
 
-  return {
-    callBids: _callBids,
-    str: str,
-  };
-};
-
-adaptermanager.registerBidAdapter(new SharethroughAdapter, 'sharethrough');
-
-module.exports = SharethroughAdapter;
+registerBidder(sharethroughAdapterSpec);
