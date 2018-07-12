@@ -12,10 +12,10 @@ export const spec = {
   },
   
   buildRequests: function(bidRequests, bidderRequest) {
-    return window.pbjstest.bidsRequest;
+    return window.pbjstest.buildRequests(bidRequests, bidderRequest);
   },
 
-  interpretResponse: function(serverResponse, {bidderRequest}) {
+  interpretResponse: function(serverResponse, { bidderRequest }) {
     return window.pbjstest.interpretResponse(serverResponse, bidderRequest);
   },
 
