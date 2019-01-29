@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { spec } from 'modules/consumableBidAdapter';
-import { createBid } from 'src/bidfactory';
+
+var bidFactory = require('src/bidfactory.js');
 
 const ENDPOINT = 'https://e.serverbid.com/api/v2';
 const SMARTSYNC_CALLBACK = 'serverbidCallBids';
@@ -207,7 +208,7 @@ describe('Consumable BidAdapter', function () {
   describe('interpretResponse validation', function () {
     it('response should have valid bidderCode', function () {
       let bidRequest = spec.buildRequests(REQUEST.bidRequest);
-      let bid = createBid(1, bidRequest.bidRequest[0]);
+      let bid = bidFactory.createBid(1, bidRequest.bidRequest[0]);
 
       expect(bid.bidderCode).to.equal('consumable');
     });
@@ -231,7 +232,7 @@ describe('Consumable BidAdapter', function () {
         expect(b).to.have.property('ad');
         expect(b).to.have.property('currency', 'USD');
         expect(b).to.have.property('creativeId');
-        expect(b).to.have.property('ttl', 30);
+        expect(b).to.have.property('ttl', 360);
         expect(b).to.have.property('netRevenue', true);
         expect(b).to.have.property('referrer');
       });

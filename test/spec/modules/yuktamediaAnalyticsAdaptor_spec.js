@@ -1,6 +1,6 @@
 import yuktamediaAnalyticsAdapter from 'modules/yuktamediaAnalyticsAdapter';
 import { expect } from 'chai';
-let adapterManager = require('src/adapterManager').default;
+let adaptermanager = require('src/adaptermanager');
 let events = require('src/events');
 let constants = require('src/constants.json');
 
@@ -26,13 +26,13 @@ describe('YuktaMedia analytics adapter', function () {
       pubKey: 'ZXlKaGJHY2lPaUpJVXpJMU5pSjkuT=='
     };
 
-    adapterManager.registerAnalyticsAdapter({
+    adaptermanager.registerAnalyticsAdapter({
       code: 'yuktamedia',
       adapter: yuktamediaAnalyticsAdapter
     });
 
     beforeEach(function () {
-      adapterManager.enableAnalytics({
+      adaptermanager.enableAnalytics({
         provider: 'yuktamedia',
         options: initOptions
       });

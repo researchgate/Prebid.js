@@ -58,14 +58,6 @@ describe('33acrossBidAdapter:', function () {
         ext: {
           gdpr: 0
         }
-      },
-      ext: {
-        ttx: {
-          caller: [{
-            'name': 'prebidjs',
-            'version': '$prebid.version$'
-          }]
-        }
       }
     };
 

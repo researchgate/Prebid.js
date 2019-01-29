@@ -20,26 +20,6 @@ let consoleInfoExists = Boolean(consoleExists && window.console.info);
 let consoleWarnExists = Boolean(consoleExists && window.console.warn);
 let consoleErrorExists = Boolean(consoleExists && window.console.error);
 
-// this allows stubbing of utility functions that are used internally by other utility functions
-export const internal = {
-  checkCookieSupport,
-  createTrackPixelIframeHtml,
-  getWindowSelf,
-  getWindowTop,
-  getAncestorOrigins,
-  getTopFrameReferrer,
-  getWindowLocation,
-  getTopWindowLocation,
-  insertUserSyncIframe,
-  insertElement,
-  isFn,
-  triggerPixel,
-  logError,
-  logWarn,
-  logMessage,
-  logInfo
-};
-
 /*
  *   Substitutes into a string from a given map using the token
  *   Usage
@@ -49,8 +29,8 @@ export const internal = {
  *   map['something'] = 'something else';
  *   console.log(replaceTokenInString(str, map, '%%')); => "text it was subbed this text with something else"
  */
-export function replaceTokenInString(str, map, token) {
-  _each(map, function (value, key) {
+exports.replaceTokenInString = function (str, map, token) {
+  exports._each(map, function (value, key) {
     value = (value === undefined) ? '' : value;
 
     var keyString = token + key.toUpperCase() + token;
@@ -60,7 +40,7 @@ export function replaceTokenInString(str, map, token) {
   });
 
   return str;
-}
+};
 
 /* utility method to get incremental integer starting from 1 */
 var getIncrementalInteger = (function () {
@@ -71,10 +51,12 @@ var getIncrementalInteger = (function () {
   };
 })();
 
-// generate a random string (to be used as a dynamic JSONP callback)
-export function getUniqueIdentifierStr() {
+function _getUniqueIdentifierStr() {
   return getIncrementalInteger() + Math.random().toString(16).substr(2);
 }
+
+// generate a random string (to be used as a dynamic JSONP callback)
+exports.getUniqueIdentifierStr = _getUniqueIdentifierStr;
 
 /**
  * Returns a random v4 UUID of the form xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx,
@@ -82,53 +64,41 @@ export function getUniqueIdentifierStr() {
  * and y is replaced with a random hexadecimal digit from 8 to b.
  * https://gist.github.com/jed/982883 via node-uuid
  */
-export function generateUUID(placeholder) {
+exports.generateUUID = function generateUUID(placeholder) {
   return placeholder
-    ? (placeholder ^ _getRandomData() >> placeholder / 4).toString(16)
+    ? (placeholder ^ Math.random() * 16 >> placeholder / 4).toString(16)
     : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, generateUUID);
-}
+};
 
-/**
- * Returns random data using the Crypto API if available and Math.random if not
- * Method is from https://gist.github.com/jed/982883 like generateUUID, direct link https://gist.github.com/jed/982883#gistcomment-45104
- */
-function _getRandomData() {
-  if (window && window.crypto && window.crypto.getRandomValues) {
-    return crypto.getRandomValues(new Uint8Array(1))[0] % 16;
-  } else {
-    return Math.random() * 16;
-  }
-}
-
-export function getBidIdParameter(key, paramsObj) {
+exports.getBidIdParameter = function (key, paramsObj) {
   if (paramsObj && paramsObj[key]) {
     return paramsObj[key];
   }
 
   return '';
-}
+};
 
-export function tryAppendQueryString(existingUrl, key, value) {
+exports.tryAppendQueryString = function (existingUrl, key, value) {
   if (value) {
     return existingUrl += key + '=' + encodeURIComponent(value) + '&';
   }
 
   return existingUrl;
-}
+};
 
 // parse a query string object passed in bid params
 // bid params should be an object such as {key: "value", key1 : "value1"}
-export function parseQueryStringParameters(queryObj) {
-  let result = '';
+exports.parseQueryStringParameters = function (queryObj) {
+  var result = '';
   for (var k in queryObj) {
     if (queryObj.hasOwnProperty(k)) { result += k + '=' + encodeURIComponent(queryObj[k]) + '&'; }
   }
 
   return result;
-}
+};
 
 // transform an AdServer targeting bids into a query string to send to the adserver
-export function transformAdServerTargetingObj(targeting) {
+exports.transformAdServerTargetingObj = function (targeting) {
   // we expect to receive targeting for a single slot at a time
   if (targeting && Object.getOwnPropertyNames(targeting).length > 0) {
     return getKeys(targeting)
@@ -136,13 +106,13 @@ export function transformAdServerTargetingObj(targeting) {
   } else {
     return '';
   }
-}
+};
 
 /**
  * Read an adUnit object and return the sizes used in an [[728, 90]] format (even if they had [728, 90] defined)
  * Preference is given to the `adUnit.mediaTypes.banner.sizes` object over the `adUnit.sizes`
  * @param {object} adUnit one adUnit object from the normal list of adUnits
- * @returns {Array.<number[]>} array of arrays containing numeric sizes
+ * @returns {array[array[number]]} array of arrays containing numeric sizes
  */
 export function getAdUnitSizes(adUnit) {
   if (!adUnit) {
@@ -169,8 +139,8 @@ export function getAdUnitSizes(adUnit) {
 
 /**
  * Parse a GPT-Style general size Array like `[[300, 250]]` or `"300x250,970x90"` into an array of sizes `["300x250"]` or '['300x250', '970x90']'
- * @param  {(Array.<number[]>|Array.<number>)} sizeObj Input array or double array [300,250] or [[300,250], [728,90]]
- * @return {Array.<string>}  Array of strings like `["300x250"]` or `["300x250", "728x90"]`
+ * @param  {array[array|number]} sizeObj Input array or double array [300,250] or [[300,250], [728,90]]
+ * @return {array[string]}  Array of strings like `["300x250"]` or `["300x250", "728x90"]`
  */
 export function parseSizesInput(sizeObj) {
   var parsedSizes = [];
@@ -208,37 +178,37 @@ export function parseSizesInput(sizeObj) {
   }
 
   return parsedSizes;
-}
+};
 
 // parse a GPT style sigle size array, (i.e [300,250])
 // into an AppNexus style string, (i.e. 300x250)
 export function parseGPTSingleSizeArray(singleSize) {
   // if we aren't exactly 2 items in this array, it is invalid
-  if (isArray(singleSize) && singleSize.length === 2 && (!isNaN(singleSize[0]) && !isNaN(singleSize[1]))) {
+  if (exports.isArray(singleSize) && singleSize.length === 2 && (!isNaN(singleSize[0]) && !isNaN(singleSize[1]))) {
     return singleSize[0] + 'x' + singleSize[1];
   }
-}
+};
 
 /**
- * @deprecated This function will be removed soon. Use http://prebid.org/dev-docs/bidder-adaptor.html#referrers
+ * @deprecated This function will be removed soon
  */
-export function getTopWindowLocation() {
-  if (inIframe()) {
+exports.getTopWindowLocation = function() {
+  if (exports.inIframe()) {
     let loc;
     try {
-      loc = internal.getAncestorOrigins() || internal.getTopFrameReferrer();
+      loc = exports.getAncestorOrigins() || exports.getTopFrameReferrer();
     } catch (e) {
       logInfo('could not obtain top window location', e);
     }
     if (loc) return parse(loc, {'decodeSearchAsString': true});
   }
-  return internal.getWindowLocation();
+  return exports.getWindowLocation();
 }
 
 /**
- * @deprecated This function will be removed soon. Use http://prebid.org/dev-docs/bidder-adaptor.html#referrers
+ * @deprecated This function will be removed soon
  */
-export function getTopFrameReferrer() {
+exports.getTopFrameReferrer = function () {
   try {
     // force an exception in x-domain environments. #1509
     window.top.location.toString();
@@ -255,80 +225,74 @@ export function getTopFrameReferrer() {
   } catch (e) {
     return window.document.referrer;
   }
-}
+};
 
 /**
- * @deprecated This function will be removed soon. Use http://prebid.org/dev-docs/bidder-adaptor.html#referrers
+ * @deprecated This function will be removed soon
  */
-export function getAncestorOrigins() {
+exports.getAncestorOrigins = function () {
   if (window.document.location && window.document.location.ancestorOrigins &&
     window.document.location.ancestorOrigins.length >= 1) {
     return window.document.location.ancestorOrigins[window.document.location.ancestorOrigins.length - 1];
   }
-}
+};
 
-export function getWindowTop() {
+exports.getWindowTop = function () {
   return window.top;
-}
+};
 
-export function getWindowSelf() {
+exports.getWindowSelf = function () {
   return window.self;
-}
+};
 
-export function getWindowLocation() {
+exports.getWindowLocation = function () {
   return window.location;
-}
+};
 
-/**
- * @deprecated This function will be removed soon. Use http://prebid.org/dev-docs/bidder-adaptor.html#referrers
- */
-export function getTopWindowUrl() {
+exports.getTopWindowUrl = function () {
   let href;
   try {
-    href = internal.getTopWindowLocation().href;
+    href = exports.getTopWindowLocation().href;
   } catch (e) {
     href = '';
   }
   return href;
-}
+};
 
-/**
- * @deprecated This function will be removed soon. Use http://prebid.org/dev-docs/bidder-adaptor.html#referrers
- */
-export function getTopWindowReferrer() {
+exports.getTopWindowReferrer = function() {
   try {
     return window.top.document.referrer;
   } catch (e) {
     return document.referrer;
   }
-}
+};
 
 /**
  * Wrappers to console.(log | info | warn | error). Takes N arguments, the same as the native methods
  */
-export function logMessage() {
+exports.logMessage = function () {
   if (debugTurnedOn() && consoleLogExists) {
     console.log.apply(console, decorateLog(arguments, 'MESSAGE:'));
   }
-}
+};
 
-export function logInfo() {
+exports.logInfo = function () {
   if (debugTurnedOn() && consoleInfoExists) {
     console.info.apply(console, decorateLog(arguments, 'INFO:'));
   }
-}
+};
 
-export function logWarn() {
+exports.logWarn = function () {
   if (debugTurnedOn() && consoleWarnExists) {
     console.warn.apply(console, decorateLog(arguments, 'WARNING:'));
   }
-}
+};
 
-export function logError() {
+exports.logError = function () {
   if (debugTurnedOn() && consoleErrorExists) {
     console.error.apply(console, decorateLog(arguments, 'ERROR:'));
   }
-}
+};
 
 function decorateLog(args, prefix) {
   args = [].slice.call(args);
@@ -338,11 +302,13 @@ function decorateLog(args, prefix) {
   return args;
 }
 
-export function hasConsoleLogger() {
+function hasConsoleLogger() {
   return consoleLogExists;
 }
 
-export function debugTurnedOn() {
+exports.hasConsoleLogger = hasConsoleLogger;
+
+var debugTurnedOn = function () {
   if (config.getConfig('debug') === false && _loggingChecked === false) {
     const debug = getParameterByName(CONSTANTS.DEBUG_MODE).toUpperCase() === 'TRUE';
     config.setConfig({ debug });
@@ -350,11 +316,13 @@ export function debugTurnedOn() {
   }
 
   return !!config.getConfig('debug');
-}
+};
 
-export function createInvisibleIframe() {
+exports.debugTurnedOn = debugTurnedOn;
+
+exports.createInvisibleIframe = function _createInvisibleIframe() {
   var f = document.createElement('iframe');
-  f.id = getUniqueIdentifierStr();
+  f.id = _getUniqueIdentifierStr();
   f.height = 0;
   f.width = 0;
   f.border = '0px';
@@ -368,13 +336,13 @@ export function createInvisibleIframe() {
   f.src = 'about:blank';
   f.style.display = 'none';
   return f;
-}
+};
 
 /*
  *   Check if a given parameter name exists in query string
  *   and if it does return the value
  */
-export function getParameterByName(name) {
+var getParameterByName = function (name) {
   var regexS = '[\\?&]' + name + '=([^&#]*)';
   var regex = new RegExp(regexS);
   var results = regex.exec(window.location.search);
@@ -383,15 +351,17 @@ export function getParameterByName(name) {
   }
 
   return decodeURIComponent(results[1].replace(/\+/g, ' '));
-}
+};
+
+exports.getParameterByName = getParameterByName;
 
 /**
  * This function validates paramaters.
- * @param  {Object} paramObj          [description]
+ * @param  {object[string]} paramObj          [description]
  * @param  {string[]} requiredParamsArr [description]
- * @return {boolean}                   Bool if paramaters are valid
+ * @return {bool}                   Bool if paramaters are valid
  */
-export function hasValidBidRequest(paramObj, requiredParamsArr, adapter) {
+exports.hasValidBidRequest = function (paramObj, requiredParamsArr, adapter) {
   var found = false;
 
   function findParam(value, key) {
@@ -403,25 +373,25 @@ export function hasValidBidRequest(paramObj, requiredParamsArr, adapter) {
   for (var i = 0; i < requiredParamsArr.length; i++) {
     found = false;
 
-    _each(paramObj, findParam);
+    exports._each(paramObj, findParam);
 
     if (!found) {
-      logError('Params are missing for bid request. One of these required paramaters are missing: ' + requiredParamsArr, adapter);
+      exports.logError('Params are missing for bid request. One of these required paramaters are missing: ' + requiredParamsArr, adapter);
       return false;
     }
   }
 
   return true;
-}
+};
 
 // Handle addEventListener gracefully in older browsers
-export function addEventHandler(element, event, func) {
+exports.addEventHandler = function (element, event, func) {
   if (element.addEventListener) {
     element.addEventListener(event, func, true);
   } else if (element.attachEvent) {
     element.attachEvent('on' + event, func);
   }
-}
+};
 /**
  * Return if the object is of the
  * given type.
@@ -429,32 +399,32 @@ export function addEventHandler(element, event, func) {
  * @param {String} _t type string (e.g., Array)
  * @return {Boolean} if object is of type _t
  */
-export function isA(object, _t) {
+exports.isA = function (object, _t) {
   return toString.call(object) === '[object ' + _t + ']';
+};
+
+exports.isFn = function (object) {
+  return exports.isA(object, tFn);
+};
+
+exports.isStr = function (object) {
+  return exports.isA(object, tStr);
+};
+
+exports.isArray = function (object) {
+  return exports.isA(object, tArr);
+};
+
+exports.isNumber = function(object) {
+  return exports.isA(object, tNumb);
+};
+
+exports.isPlainObject = function(object) {
+  return exports.isA(object, tObject);
 }
 
-export function isFn(object) {
-  return isA(object, tFn);
-}
-
-export function isStr(object) {
-  return isA(object, tStr);
-}
-
-export function isArray(object) {
-  return isA(object, tArr);
-}
-
-export function isNumber(object) {
-  return isA(object, tNumb);
-}
-
-export function isPlainObject(object) {
-  return isA(object, tObject);
-}
-
-export function isBoolean(object) {
-  return isA(object, tBoolean);
+exports.isBoolean = function(object) {
+  return exports.isA(object, tBoolean);
 }
 
 /**
@@ -463,9 +433,9 @@ export function isBoolean(object) {
  * @param {*} object object to test
  * @return {Boolean} if object is empty
  */
-export function isEmpty(object) {
+exports.isEmpty = function (object) {
   if (!object) return true;
-  if (isArray(object) || isStr(object)) {
+  if (exports.isArray(object) || exports.isStr(object)) {
     return !(object.length > 0);
   }
 
@@ -474,16 +444,16 @@ export function isEmpty(object) {
   }
 
   return true;
-}
+};
 
 /**
  * Return if string is empty, null, or undefined
  * @param str string to test
  * @returns {boolean} if string is empty
  */
-export function isEmptyStr(str) {
-  return isStr(str) && (!str || str.length === 0);
-}
+exports.isEmptyStr = function(str) {
+  return exports.isStr(str) && (!str || str.length === 0);
+};
 
 /**
  * Iterate object with the function
@@ -491,9 +461,9 @@ export function isEmptyStr(str) {
  * @param {Array|Object} object
  * @param {Function(value, key, object)} fn
  */
-export function _each(object, fn) {
-  if (isEmpty(object)) return;
-  if (isFn(object.forEach)) return object.forEach(fn, this);
+exports._each = function (object, fn) {
+  if (exports.isEmpty(object)) return;
+  if (exports.isFn(object.forEach)) return object.forEach(fn, this);
 
   var k = 0;
   var l = object.length;
@@ -505,14 +475,14 @@ export function _each(object, fn) {
       if (hasOwnProperty.call(object, k)) fn.call(this, object[k], k);
     }
   }
-}
+};
 
-export function contains(a, obj) {
-  if (isEmpty(a)) {
+exports.contains = function (a, obj) {
+  if (exports.isEmpty(a)) {
     return false;
   }
 
-  if (isFn(a.indexOf)) {
+  if (exports.isFn(a.indexOf)) {
     return a.indexOf(obj) !== -1;
   }
 
@@ -524,9 +494,9 @@ export function contains(a, obj) {
   }
 
   return false;
-}
+};
 
-export let indexOf = (function () {
+exports.indexOf = (function () {
   if (Array.prototype.indexOf) {
     return Array.prototype.indexOf;
   }
@@ -542,16 +512,16 @@ export let indexOf = (function () {
  * @param {Function(value, key, object)} callback
  * @return {Array}
  */
-export function _map(object, callback) {
-  if (isEmpty(object)) return [];
-  if (isFn(object.map)) return object.map(callback);
+exports._map = function (object, callback) {
+  if (exports.isEmpty(object)) return [];
+  if (exports.isFn(object.map)) return object.map(callback);
   var output = [];
-  _each(object, function (value, key) {
+  exports._each(object, function (value, key) {
     output.push(callback(value, key, object));
   });
 
   return output;
-}
+};
 
 var hasOwn = function (objectToCheck, propertyToCheckFor) {
   if (objectToCheck.hasOwnProperty) {
@@ -561,64 +531,46 @@ var hasOwn = function (objectToCheck, propertyToCheckFor) {
   }
 };
 
-/*
-* Inserts an element(elm) as targets child, by default as first child
-* @param {HTMLElement} elm
-* @param {HTMLElement} [doc]
-* @param {HTMLElement} [target]
-* @param {Boolean} [asLastChildChild]
-* @return {HTMLElement}
-*/
-export function insertElement(elm, doc, target, asLastChildChild) {
+exports.insertElement = function(elm, doc, target) {
   doc = doc || document;
-  let parentEl;
+  let elToAppend;
   if (target) {
-    parentEl = doc.getElementsByTagName(target);
+    elToAppend = doc.getElementsByTagName(target);
   } else {
-    parentEl = doc.getElementsByTagName('head');
+    elToAppend = doc.getElementsByTagName('head');
   }
   try {
-    parentEl = parentEl.length ? parentEl : doc.getElementsByTagName('body');
-    if (parentEl.length) {
-      parentEl = parentEl[0];
-      let insertBeforeEl = asLastChildChild ? null : parentEl.firstChild;
-      return parentEl.insertBefore(elm, insertBeforeEl);
+    elToAppend = elToAppend.length ? elToAppend : doc.getElementsByTagName('body');
+    if (elToAppend.length) {
+      elToAppend = elToAppend[0];
+      elToAppend.insertBefore(elm, elToAppend.firstChild);
     }
   } catch (e) {}
-}
+};
 
-/**
- * Inserts an image pixel with the specified `url` for cookie sync
- * @param {string} url URL string of the image pixel to load
- * @param  {function} [done] an optional exit callback, used when this usersync pixel is added during an async process
- */
-export function triggerPixel(url, done) {
+exports.triggerPixel = function (url) {
   const img = new Image();
-  if (done && internal.isFn(done)) {
-    img.addEventListener('load', done);
-    img.addEventListener('error', done);
-  }
   img.src = url;
-}
+};
 
-export function callBurl({ source, burl }) {
+exports.callBurl = function({ source, burl }) {
   if (source === CONSTANTS.S2S.SRC && burl) {
-    internal.triggerPixel(burl);
+    exports.triggerPixel(burl);
   }
-}
+};
 
 /**
  * Inserts an empty iframe with the specified `html`, primarily used for tracking purposes
  * (though could be for other purposes)
  * @param {string} htmlCode snippet of HTML code used for tracking purposes
  */
-export function insertHtmlIntoIframe(htmlCode) {
+exports.insertHtmlIntoIframe = function(htmlCode) {
   if (!htmlCode) {
     return;
   }
 
   let iframe = document.createElement('iframe');
-  iframe.id = getUniqueIdentifierStr();
+  iframe.id = exports.getUniqueIdentifierStr();
   iframe.width = 0;
   iframe.height = 0;
   iframe.hspace = '0';
@@ -632,7 +584,7 @@ export function insertHtmlIntoIframe(htmlCode) {
   iframe.frameBorder = '0';
   iframe.allowtransparency = 'true';
 
-  internal.insertElement(iframe, document, 'body');
+  exports.insertElement(iframe, document, 'body');
 
   iframe.contentWindow.document.open();
   iframe.contentWindow.document.write(htmlCode);
@@ -643,18 +595,13 @@ export function insertHtmlIntoIframe(htmlCode) {
  * Inserts empty iframe with the specified `url` for cookie sync
  * @param  {string} url URL to be requested
  * @param  {string} encodeUri boolean if URL should be encoded before inserted. Defaults to true
- * @param  {function} [done] an optional exit callback, used when this usersync pixel is added during an async process
  */
-export function insertUserSyncIframe(url, done) {
-  let iframeHtml = internal.createTrackPixelIframeHtml(url, false, 'allow-scripts allow-same-origin');
+exports.insertUserSyncIframe = function(url) {
+  let iframeHtml = exports.createTrackPixelIframeHtml(url, false, 'allow-scripts allow-same-origin');
   let div = document.createElement('div');
   div.innerHTML = iframeHtml;
   let iframe = div.firstChild;
-  if (done && internal.isFn(done)) {
-    iframe.addEventListener('load', done);
-    iframe.addEventListener('error', done);
-  }
-  internal.insertElement(iframe, document, 'html', true);
+  exports.insertElement(iframe);
 };
 
 /**
@@ -662,7 +609,7 @@ export function insertUserSyncIframe(url, done) {
  * @param  {string} url URL to be requested
  * @return {string}     HTML snippet that contains the img src = set to `url`
  */
-export function createTrackPixelHtml(url) {
+exports.createTrackPixelHtml = function (url) {
   if (!url) {
     return '';
   }
@@ -680,7 +627,7 @@ export function createTrackPixelHtml(url) {
  * @param  {string} sandbox string if provided the sandbox attribute will be included with the given value
  * @return {string}     HTML snippet that contains the iframe src = set to `url`
  */
-export function createTrackPixelIframeHtml(url, encodeUri = true, sandbox = '') {
+exports.createTrackPixelIframeHtml = function (url, encodeUri = true, sandbox = '') {
   if (!url) {
     return '';
   }
@@ -691,7 +638,7 @@ export function createTrackPixelIframeHtml(url, encodeUri = true, sandbox = '') 
     sandbox = `sandbox="${sandbox}"`;
   }
 
-  return `<iframe ${sandbox} id="${getUniqueIdentifierStr()}"
+  return `<iframe ${sandbox} id="${exports.getUniqueIdentifierStr()}"
       frameborder="0"
       allowtransparency="true"
       marginheight="0" marginwidth="0"
@@ -700,14 +647,14 @@ export function createTrackPixelIframeHtml(url, encodeUri = true, sandbox = '') 
       scrolling="no"
       src="${url}">
     </iframe>`;
-}
+};
 
 /**
  * Returns iframe document in a browser agnostic way
- * @param  {Object} iframe reference
- * @return {Object}        iframe `document` reference
+ * @param  {object} iframe reference
+ * @return {object}        iframe `document` reference
  */
-export function getIframeDocument(iframe) {
+exports.getIframeDocument = function (iframe) {
   if (!iframe) {
     return;
   }
@@ -722,24 +669,24 @@ export function getIframeDocument(iframe) {
       doc = iframe.contentDocument;
     }
   } catch (e) {
-    internal.logError('Cannot get iframe document', e);
+    exports.logError('Cannot get iframe document', e);
   }
 
   return doc;
-}
+};
 
-export function getValueString(param, val, defaultValue) {
+exports.getValueString = function(param, val, defaultValue) {
   if (val === undefined || val === null) {
     return defaultValue;
   }
-  if (isStr(val)) {
+  if (exports.isStr(val)) {
     return val;
   }
-  if (isNumber(val)) {
+  if (exports.isNumber(val)) {
     return val.toString();
   }
-  internal.logWarn('Unsuported type for param: ' + param + ' required type: String');
-}
+  exports.logWarn('Unsuported type for param: ' + param + ' required type: String');
+};
 
 export function uniques(value, index, arry) {
   return arry.indexOf(value) === index;
@@ -776,7 +723,7 @@ export function getBidderCodes(adUnits = $$PREBID_GLOBAL$$.adUnits) {
 }
 
 export function isGptPubadsDefined() {
-  if (window.googletag && isFn(window.googletag.pubads) && isFn(window.googletag.pubads().getSlots)) {
+  if (window.googletag && exports.isFn(window.googletag.pubads) && exports.isFn(window.googletag.pubads().getSlots)) {
     return true;
   }
 }
@@ -847,7 +794,7 @@ export function deepClone(obj) {
 
 export function inIframe() {
   try {
-    return internal.getWindowSelf() !== internal.getWindowTop();
+    return exports.getWindowSelf() !== exports.getWindowTop();
   } catch (e) {
     return true;
   }
@@ -872,16 +819,11 @@ export function checkCookieSupport() {
   }
 }
 export function cookiesAreEnabled() {
-  if (internal.checkCookieSupport()) {
+  if (exports.checkCookieSupport()) {
     return true;
   }
   window.document.cookie = 'prebid.cookieTest';
   return window.document.cookie.indexOf('prebid.cookieTest') != -1;
-}
-
-export function getCookie(name) {
-  let m = window.document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]*)\\s*(;|$)');
-  return m ? decodeURIComponent(m[2]) : null;
 }
 
 /**
@@ -914,7 +856,7 @@ export function delayExecution(func, numRequiredCalls) {
  * @export
  * @param {array} xs
  * @param {string} key
- * @returns {Object} {${key_value}: ${groupByArray}, key_value: {groupByArray}}
+ * @returns {${key_value}: ${groupByArray}, key_value: {groupByArray}}
  */
 export function groupBy(xs, key) {
   return xs.reduce(function(rv, x) {
@@ -925,7 +867,7 @@ export function groupBy(xs, key) {
 
 /**
  * deepAccess utility function useful for doing safe access (will not throw exceptions) of deep object paths.
- * @param {Object} obj The object containing the values you would like to access.
+ * @param {object} obj The object containing the values you would like to access.
  * @param {string|number} path Object path to the value you would like to access.  Non-strings are coerced to strings.
  * @returns {*} The value found at the specified object path, or undefined if path is not found.
  */
@@ -945,7 +887,7 @@ export function deepAccess(obj, path) {
 
 /**
  * Returns content for a friendly iframe to execute a URL in script tag
- * @param {string} url URL to be executed in a script tag in a friendly iframe
+ * @param {url} URL to be executed in a script tag in a friendly iframe
  * <!--PRE_SCRIPT_TAG_MACRO--> and <!--POST_SCRIPT_TAG_MACRO--> are macros left to be replaced if required
  */
 export function createContentToExecuteExtScriptInFriendlyFrame(url) {
@@ -959,9 +901,9 @@ export function createContentToExecuteExtScriptInFriendlyFrame(url) {
 /**
  * Build an object consisting of only defined parameters to avoid creating an
  * object with defined keys and undefined values.
- * @param {Object} object The object to pick defined params out of
+ * @param {object} object The object to pick defined params out of
  * @param {string[]} params An array of strings representing properties to look for in the object
- * @returns {Object} An object containing all the specified values that are defined
+ * @returns {object} An object containing all the specified values that are defined
  */
 export function getDefinedParams(object, params) {
   return params
@@ -1006,8 +948,8 @@ export function getBidderRequest(bidRequests, bidder, adUnitCode) {
 }
 /**
  * Returns user configured bidder params from adunit
- * @param {Object} adUnits
- * @param {string} adUnitCode code
+ * @param {object} adunits
+ * @param {string} adunit code
  * @param {string} bidder code
  * @return {Array} user configured param for the given bidder adunit configuration
  */
@@ -1042,7 +984,7 @@ const compareCodeAndSlot = (slot, adUnitCode) => slot.getAdUnitPath() === adUnit
 
 /**
  * Returns filter function to match adUnitCode in slot
- * @param {Object} slot GoogleTag slot
+ * @param {object} slot GoogleTag slot
  * @return {function} filter function
  */
 export function isAdUnitCodeMatchingSlot(slot) {
@@ -1081,9 +1023,9 @@ export function unsupportedBidderMessage(adUnit, bidder) {
  * @return {Object} object
  */
 export function deletePropertyFromObject(object, prop) {
-  let result = Object.assign({}, object);
+  let result = Object.assign({}, object)
   delete result[prop];
-  return result;
+  return result
 }
 
 /**
@@ -1092,7 +1034,7 @@ export function deletePropertyFromObject(object, prop) {
  * @return {Object} bid
  */
 export function removeRequestId(bid) {
-  return deletePropertyFromObject(bid, 'requestId');
+  return exports.deletePropertyFromObject(bid, 'requestId');
 }
 
 /**
@@ -1121,23 +1063,23 @@ export function convertCamelToUnderscore(value) {
  * normally read from bidder params
  * eg { foo: ['bar', 'baz'], fizz: ['buzz'] }
  * becomes [{ key: 'foo', value: ['bar', 'baz']}, {key: 'fizz', value: ['buzz']}]
- * @param {Object} keywords object of arrays representing keyvalue pairs
+ * @param {Object{Arrays}} keywords object of arrays representing keyvalue pairs
  * @param {string} paramName name of parent object (eg 'keywords') containing keyword data, used in error handling
  */
 export function transformBidderParamKeywords(keywords, paramName = 'keywords') {
   let arrs = [];
 
-  _each(keywords, (v, k) => {
-    if (isArray(v)) {
+  exports._each(keywords, (v, k) => {
+    if (exports.isArray(v)) {
       let values = [];
-      _each(v, (val) => {
-        val = getValueString(paramName + '.' + k, val);
-        if (val || val === '') { values.push(val); }
+      exports._each(v, (val) => {
+        val = exports.getValueString(paramName + '.' + k, val);
+        if (val) { values.push(val); }
       });
       v = values;
     } else {
-      v = getValueString(paramName + '.' + k, v);
-      if (isStr(v)) {
+      v = exports.getValueString(paramName + '.' + k, v);
+      if (exports.isStr(v)) {
         v = [v];
       } else {
         return;
@@ -1169,7 +1111,7 @@ function tryConvertType(typeToConvert, value) {
 export function convertTypes(types, params) {
   Object.keys(types).forEach(key => {
     if (params[key]) {
-      if (isFn(types[key])) {
+      if (exports.isFn(types[key])) {
         params[key] = types[key](params[key]);
       } else {
         params[key] = tryConvertType(types[key], params[key]);

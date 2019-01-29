@@ -3,7 +3,7 @@ import CONSTANTS from 'src/constants.json';
 import { config } from 'src/config';
 
 let events = require('src/events');
-let adapterManager = require('src/adapterManager').default;
+let adaptermanager = require('src/adaptermanager');
 
 const {
   EVENTS: {
@@ -187,13 +187,13 @@ describe('Livewrapped analytics adapter', function () {
   });
 
   describe('when handling events', function () {
-    adapterManager.registerAnalyticsAdapter({
+    adaptermanager.registerAnalyticsAdapter({
       code: 'livewrapped',
       adapter: livewrappedAnalyticsAdapter
     });
 
     beforeEach(function () {
-      adapterManager.enableAnalytics({
+      adaptermanager.enableAnalytics({
         provider: 'livewrapped',
         options: {
           publisherId: 'CC411485-42BC-4F92-8389-42C503EE38D7'

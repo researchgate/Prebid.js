@@ -1,5 +1,5 @@
-import * as utils from '../src/utils';
-import {registerBidder} from '../src/adapters/bidderFactory';
+import * as utils from 'src/utils';
+import {registerBidder} from 'src/adapters/bidderFactory';
 const BIDDER_CODE = 'oneVideo';
 export const spec = {
   code: 'oneVideo',
@@ -47,6 +47,7 @@ export const spec = {
         method: 'POST',
         url: location.protocol + spec.ENDPOINT + bid.params.pubId,
         data: getRequestData(bid, consentData),
+        options: {contentType: 'application/json'},
         bidRequest: bid
       }
     })
@@ -135,6 +136,7 @@ function isConsentRequired(consentData) {
 
 function getRequestData(bid, consentData) {
   let loc = utils.getTopWindowLocation();
+  let global = (window.top) ? window.top : window;
   let page = (bid.params.site && bid.params.site.page) ? (bid.params.site.page) : (loc.href);
   let ref = (bid.params.site && bid.params.site.referrer) ? bid.params.site.referrer : utils.getTopWindowReferrer();
   let bidData = {
@@ -158,7 +160,7 @@ function getRequestData(bid, consentData) {
       ref: ref
     },
     device: {
-      ua: navigator.userAgent
+      ua: global.navigator.userAgent
     },
     tmax: 200
   };

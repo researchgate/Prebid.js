@@ -1,6 +1,6 @@
-import * as utils from '../src/utils';
-import { BANNER, NATIVE } from '../src/mediaTypes';
-import { registerBidder } from '../src/adapters/bidderFactory';
+import * as utils from 'src/utils';
+import { BANNER, NATIVE } from 'src/mediaTypes';
+import { registerBidder } from 'src/adapters/bidderFactory';
 import includes from 'core-js/library/fn/array/includes';
 
 const BIDDER_CODE = 'rtbhouse';
@@ -43,12 +43,9 @@ export const spec = {
     const request = {
       id: validBidRequests[0].auctionId,
       imp: validBidRequests.map(slot => mapImpression(slot)),
-      site: mapSite(validBidRequests, bidderRequest),
+      site: mapSite(validBidRequests),
       cur: DEFAULT_CURRENCY_ARR,
-      test: validBidRequests[0].params.test || 0,
-      source: {
-        tid: validBidRequests[0].transactionId
-      }
+      test: validBidRequests[0].params.test || 0
     };
     if (bidderRequest && bidderRequest.gdprConsent && bidderRequest.gdprConsent.gdprApplies) {
       const consentStr = (bidderRequest.gdprConsent.consentString)
@@ -92,19 +89,12 @@ registerBidder(spec);
  * @returns {object} Imp by OpenRTB 2.5 §3.2.4
  */
 function mapImpression(slot) {
-  const imp = {
+  return {
     id: slot.bidId,
     banner: mapBanner(slot),
     native: mapNative(slot),
     tagid: slot.adUnitCode.toString()
   };
-
-  const bidfloor = parseFloat(slot.params.bidfloor);
-  if (bidfloor) {
-    imp.bidfloor = bidfloor
-  }
-
-  return imp;
 }
 
 /**
@@ -128,10 +118,9 @@ function mapBanner(slot) {
 
 /**
  * @param {object} slot Ad Unit Params by Prebid
- * @param {object} bidderRequest by Prebid
  * @returns {object} Site by OpenRTB 2.5 §3.2.13
  */
-function mapSite(slot, bidderRequest) {
+function mapSite(slot) {
   const pubId = slot && slot.length > 0
     ? slot[0].params.publisherId
     : 'unknown';
@@ -139,7 +128,7 @@ function mapSite(slot, bidderRequest) {
     publisher: {
       id: pubId.toString(),
     },
-    page: bidderRequest.refererInfo.referer,
+    page: utils.getTopWindowUrl(),
     name: utils.getOrigin()
   }
 }

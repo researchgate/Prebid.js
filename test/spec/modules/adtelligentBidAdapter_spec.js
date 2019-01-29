@@ -46,7 +46,6 @@ const SERVER_VIDEO_RESPONSE = {
   }
   ]
 };
-
 const SERVER_DISPLAY_RESPONSE = {
   'source': {'aid': 12345, 'pubId': 54321},
   'bids': [{
@@ -58,8 +57,7 @@ const SERVER_DISPLAY_RESPONSE = {
     'cur': 'USD',
     'width': 300,
     'cpm': 0.9
-  }],
-  'cookieURLs': ['link1', 'link2']
+  }]
 };
 
 const videoBidderRequest = {
@@ -70,14 +68,6 @@ const videoBidderRequest = {
 const displayBidderRequest = {
   bidderCode: 'bidderCode',
   bids: [{bidId: '2e41f65424c87c'}]
-};
-
-const displayBidderRequestWithGdpr = {
-  bidderCode: 'bidderCode',
-  bids: [{bidId: '2e41f65424c87c'}],
-  gdprConsent: {
-    consentString: 'test'
-  }
 };
 
 const videoEqResponse = [{
@@ -106,24 +96,8 @@ const displayEqResponse = [{
   cpm: 0.9
 }];
 
-describe('adtelligentBidAdapter', function () { // todo remove only
+describe('adtelligentBidAdapter', function () {
   const adapter = newBidder(spec);
-
-  describe('user syncs', function () {
-    it('should be returned if pixel enabled', function () {
-      const syncs = spec.getUserSyncs({pixelEnabled: true}, [{body: SERVER_DISPLAY_RESPONSE}]);
-
-      expect(syncs.map(s => s.url)).to.deep.equal(SERVER_DISPLAY_RESPONSE.cookieURLs);
-    })
-  })
-
-  describe('user syncs', function () {
-    it('should not be returned if pixel not set', function () {
-      const syncs = spec.getUserSyncs({}, [{body: SERVER_DISPLAY_RESPONSE}]);
-
-      expect(syncs).to.be.empty;
-    })
-  })
 
   describe('inherited functions', function () {
     it('exists and is a function', function () {
@@ -236,13 +210,6 @@ describe('adtelligentBidAdapter', function () { // todo remove only
       eqResponse = displayEqResponse;
 
       bidServerResponseCheck();
-    });
-
-    it('should set gdpr data correctly', function () {
-      const builtRequestData = spec.buildRequests([DISPLAY_REQUEST], displayBidderRequestWithGdpr);
-
-      expect(builtRequestData.data.gdpr).to.be.equal(1);
-      expect(builtRequestData.data.gdpr_consent).to.be.equal(displayBidderRequestWithGdpr.gdprConsent.consentString);
     });
 
     function bidServerResponseCheck() {

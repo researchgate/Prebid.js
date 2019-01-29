@@ -10,7 +10,7 @@
 import { isValidPriceConfig } from './cpmBucketManager';
 import find from 'core-js/library/fn/array/find';
 import includes from 'core-js/library/fn/array/includes';
-import { createHook } from './hook';
+import { createHook } from 'src/hook';
 const utils = require('./utils');
 
 const DEFAULT_DEBUG = false;
@@ -18,9 +18,8 @@ const DEFAULT_BIDDER_TIMEOUT = 3000;
 const DEFAULT_PUBLISHER_DOMAIN = window.location.origin;
 const DEFAULT_ENABLE_SEND_ALL_BIDS = true;
 const DEFAULT_DISABLE_AJAX_TIMEOUT = false;
-const DEFAULT_BID_CACHE = true;
 
-const DEFAULT_TIMEOUTBUFFER = 400;
+const DEFAULT_TIMEOUTBUFFER = 200;
 
 export const RANDOM = 'random';
 const FIXED = 'fixed';
@@ -134,14 +133,6 @@ export function newConfig() {
         this._sendAllBids = val;
       },
 
-      _useBidCache: DEFAULT_BID_CACHE,
-      get useBidCache() {
-        return this._useBidCache;
-      },
-      set useBidCache(val) {
-        this._useBidCache = val;
-      },
-
       _bidderSequence: DEFAULT_BIDDER_SEQUENCE,
       get bidderSequence() {
         return this._bidderSequence;
@@ -155,12 +146,12 @@ export function newConfig() {
       },
 
       // timeout buffer to adjust for bidder CDN latency
-      _timeoutBuffer: DEFAULT_TIMEOUTBUFFER,
+      _timoutBuffer: DEFAULT_TIMEOUTBUFFER,
       get timeoutBuffer() {
-        return this._timeoutBuffer;
+        return this._timoutBuffer;
       },
       set timeoutBuffer(val) {
-        this._timeoutBuffer = val;
+        this._timoutBuffer = val;
       },
 
       _disableAjaxTimeout: DEFAULT_DISABLE_AJAX_TIMEOUT,

@@ -2,7 +2,7 @@ import eplAnalyticsAdapter from 'modules/eplanningAnalyticsAdapter';
 import includes from 'core-js/library/fn/array/includes';
 import { expect } from 'chai';
 import {parse as parseURL} from 'src/url';
-let adapterManager = require('src/adapterManager').default;
+let adaptermanager = require('src/adaptermanager');
 let events = require('src/events');
 let constants = require('src/constants.json');
 
@@ -75,12 +75,12 @@ describe('eplanning analytics adapter', function () {
         }
       ];
 
-      adapterManager.registerAnalyticsAdapter({
+      adaptermanager.registerAnalyticsAdapter({
         code: 'eplanning',
         adapter: eplAnalyticsAdapter
       });
 
-      adapterManager.enableAnalytics({
+      adaptermanager.enableAnalytics({
         provider: 'eplanning',
         options: initOptions
       });

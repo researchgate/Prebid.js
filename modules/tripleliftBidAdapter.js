@@ -1,6 +1,6 @@
-import { BANNER } from '../src/mediaTypes';
-import { registerBidder } from '../src/adapters/bidderFactory';
-import * as utils from '../src/utils';
+import { BANNER } from 'src/mediaTypes';
+import { registerBidder } from 'src/adapters/bidderFactory';
+import * as utils from 'src/utils';
 
 const BIDDER_CODE = 'triplelift';
 const STR_ENDPOINT = document.location.protocol + '//tlx.3lift.com/header/auction?';
@@ -17,15 +17,12 @@ export const tripleliftAdapterSpec = {
 
   buildRequests: function(bidRequests, bidderRequest) {
     let tlCall = STR_ENDPOINT;
+    let referrer = utils.getTopWindowUrl();
     let data = _buildPostBody(bidRequests);
 
     tlCall = utils.tryAppendQueryString(tlCall, 'lib', 'prebid');
     tlCall = utils.tryAppendQueryString(tlCall, 'v', '$prebid.version$');
-
-    if (bidderRequest && bidderRequest.refererInfo) {
-      let referrer = bidderRequest.refererInfo.referer;
-      tlCall = utils.tryAppendQueryString(tlCall, 'referrer', referrer);
-    }
+    tlCall = utils.tryAppendQueryString(tlCall, 'referrer', referrer);
 
     if (bidderRequest && bidderRequest.timeout) {
       tlCall = utils.tryAppendQueryString(tlCall, 'tmax', bidderRequest.timeout);
@@ -113,11 +110,11 @@ function _buildResponseObject(bidderRequest, bid) {
   let width = bid.width || 1;
   let height = bid.height || 1;
   let dealId = bid.deal_id || '';
-  let creativeId = bid.crid || '';
+  let creativeId = bid.imp_id;
 
   if (bid.cpm != 0 && bid.ad) {
     bidResponse = {
-      requestId: bidderRequest.bids[bid.imp_id].bidId,
+      requestId: bidderRequest.bids[creativeId].bidId,
       cpm: bid.cpm,
       width: width,
       height: height,

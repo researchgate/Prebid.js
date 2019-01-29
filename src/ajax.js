@@ -1,5 +1,5 @@
 import {parse as parseURL, format as formatURL} from './url';
-import { config } from './config';
+import { config } from 'src/config';
 
 var utils = require('./utils');
 

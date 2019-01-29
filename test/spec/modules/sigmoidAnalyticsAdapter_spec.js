@@ -1,7 +1,7 @@
 import sigmoidAnalytic from 'modules/sigmoidAnalyticsAdapter';
 import { expect } from 'chai';
 let events = require('src/events');
-let adapterManager = require('src/adapterManager').default;
+let adaptermanager = require('src/adaptermanager');
 let constants = require('src/constants.json');
 
 describe('sigmoid Prebid Analytic', function () {
@@ -25,12 +25,12 @@ describe('sigmoid Prebid Analytic', function () {
       events.getEvents.restore();
     });
     it('should catch all events', function () {
-      adapterManager.registerAnalyticsAdapter({
+      adaptermanager.registerAnalyticsAdapter({
         code: 'sigmoid',
         adapter: sigmoidAnalytic
       });
 
-      adapterManager.enableAnalytics({
+      adaptermanager.enableAnalytics({
         provider: 'sigmoid',
         options: {
           publisherIds: ['test_sigmoid_prebid_analytid_publisher_id']

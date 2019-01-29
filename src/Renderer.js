@@ -1,6 +1,5 @@
 import { loadScript } from './adloader';
 import * as utils from './utils';
-import find from 'core-js/library/fn/array/find';
 
 /**
  * @typedef {object} Renderer
@@ -11,7 +10,7 @@ import find from 'core-js/library/fn/array/find';
  */
 
 export function Renderer(options) {
-  const { url, config, id, callback, loaded, adUnitCode } = options;
+  const { url, config, id, callback, loaded } = options;
   this.url = url;
   this.config = config;
   this.handlers = {};
@@ -36,16 +35,12 @@ export function Renderer(options) {
     this.process();
   });
 
-  if (!isRendererDefinedOnAdUnit(adUnitCode)) {
-    // we expect to load a renderer url once only so cache the request to load script
-    loadScript(url, this.callback, true);
-  } else {
-    utils.logWarn(`External Js not loaded by Renderer since renderer url and callback is already defined on adUnit ${adUnitCode}`);
-  }
+  // we expect to load a renderer url once only so cache the request to load script
+  loadScript(url, this.callback, true);
 }
 
-Renderer.install = function({ url, config, id, callback, loaded, adUnitCode }) {
-  return new Renderer({ url, config, id, callback, loaded, adUnitCode });
+Renderer.install = function({ url, config, id, callback, loaded }) {
+  return new Renderer({ url, config, id, callback, loaded });
 };
 
 Renderer.prototype.getConfig = function() {
@@ -98,12 +93,4 @@ export function isRendererRequired(renderer) {
  */
 export function executeRenderer(renderer, bid) {
   renderer.render(bid);
-}
-
-function isRendererDefinedOnAdUnit(adUnitCode) {
-  const adUnits = $$PREBID_GLOBAL$$.adUnits;
-  const adUnit = find(adUnits, adUnit => {
-    return adUnit.code === adUnitCode;
-  });
-  return !!(adUnit && adUnit.renderer && adUnit.renderer.url && adUnit.renderer.render);
 }

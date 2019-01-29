@@ -1,5 +1,4 @@
-
-import * as adloader from 'src/adloader';
+const adloader = require('src/adloader');
 
 let sandbox;
 

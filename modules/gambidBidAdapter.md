@@ -1,16 +1,16 @@
 # Overview
 
 ```
-Module Name:  Gamoshi Bid Adapter
+Module Name:  Gamoshi's Gambid Bid Adapter
 Module Type:  Bidder Adapter
-Maintainer:   moses@gamoshi.com
+Maintainer:   arik@gamoshi.com
 ```
 
 # Description
 
-Connects to Gamoshi's Programmatic advertising platform as a service.
+Connects to Gamoshi's Gambid platform & exchange for bids.
 
-Gamoshi bid adapter supports Banner & Outstream Video. The *only* required parameter (in the `params` section) is the `supplyPartnerId` parameter.
+Gambid bid adapter supports Banner & Outstream Video. The *only* required parameter (in the `params` section) is the `supplyPartnerId` parameter.
 
 # Test Parameters
 ```
@@ -21,10 +21,10 @@ var adUnits = [
      code: 'banner-div',
      sizes: [[300, 250]],
      bids: [{
-       bidder: 'gamoshi',
+       bidder: 'gambid',
        params: {
 
-         // ID of the supply partner you created in the Gamoshi dashboard
+         // ID of the supply partner you created in the Gambid dashboard
          supplyPartnerId: '1253',
 
          // OPTIONAL: if you have a whitelabel account on Gamoshi, specify it here
@@ -55,10 +55,10 @@ var adUnits = [
        }
      },
      bids: [ {
-       bidder: 'gamoshi',
+       bidder: 'gambid',
        params: {
 
-         // ID of the supply partner you created in the dashboard
+         // ID of the supply partner you created in the Gambid dashboard
          supplyPartnerId: '1254',
 
          // OPTIONAL: if you have a whitelabel account on Gamoshi, specify it here

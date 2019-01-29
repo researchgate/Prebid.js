@@ -10,7 +10,7 @@ Maintainer: header-bidding@pubmatic.com
 
 Connects to PubMatic exchange for bids.
 
-PubMatic bid adapter supports Video, Banner and Native currently.
+PubMatic bid adapter supports Video and Banner currently.
 
 # Sample Banner Ad Unit: For Publishers
 ```
@@ -33,8 +33,8 @@ var adUnits = [
         kadpageurl: 'www.test.com',          // optional							
         gender: 'M',                         // optional
         kadfloor: '0.50',                    // optional
-        currency: 'AUD'                      // optional (Value configured only in the 1st adunit will be passed on. < br/> Values if present in subsequent adunits, will be ignored.)
-        dctr: 'key1=123|key2=345'            // optional (Value configured only in the 1st adunit will be passed on. < br/> Values if present in subsequent adunits, will be ignored.)
+        currency: 'AUD'                      // optional
+        dctr: 'key1=123|key2=345'            // optional
       }
     }]
 }];
@@ -76,40 +76,7 @@ var adVideoAdUnits = [
 }]
 ```
 
-# Sample Native Ad Unit: For Publishers
-```
-var adUnits = [
-{
-    code: 'test-div',    
-    mediaTypes: {
-       native: {
-            image: {
-                required: true,
-                sizes: [150, 50]
-            },
-            title: {
-                required: true,
-                len: 80
-            },
-            sponsoredBy: {
-                required: true
-            },
-            clickUrl: {
-                required: true
-            }
-        }
-    },
-    bids: [{
-      bidder: 'pubmatic',
-      params: {
-        publisherId: '156295',               // required
-        adSlot: 'pubmatic_test2@1x1',       // required
-      }
-    }]
-}];
-```
-
-# ## Configuration
+### Configuration
 
 PubMatic recommends the UserSync configuration below.  Without it, the PubMatic adapter will not able to perform user syncs, which lowers match rate and reduces monetization.
 

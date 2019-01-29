@@ -1,7 +1,7 @@
 import vubleAnalytics from 'modules/vubleAnalyticsAdapter';
 import { expect } from 'chai';
 let events = require('src/events');
-let adapterManager = require('src/adapterManager').default;
+let adaptermanager = require('src/adaptermanager');
 let constants = require('src/constants.json');
 
 describe('Vuble Prebid Analytic', function () {
@@ -25,12 +25,12 @@ describe('Vuble Prebid Analytic', function () {
       events.getEvents.restore();
     });
     it('should catch all events', function () {
-      adapterManager.registerAnalyticsAdapter({
+      adaptermanager.registerAnalyticsAdapter({
         code: 'vuble',
         adapter: vubleAnalytics
       });
 
-      adapterManager.enableAnalytics({
+      adaptermanager.enableAnalytics({
         provider: 'vuble',
         options: {
           pubId: 18,

@@ -1,19 +1,7 @@
 import { expect } from 'chai'
-import { spec, pixel } from 'modules/justpremiumBidAdapter'
+import { spec } from 'modules/justpremiumBidAdapter'
 
 describe('justpremium adapter', function () {
-  let sandbox;
-  let pixelStub;
-
-  beforeEach(function() {
-    sandbox = sinon.sandbox.create();
-    pixelStub = sandbox.stub(pixel, 'fire');
-  });
-
-  afterEach(function() {
-    sandbox.restore();
-  });
-
   let adUnits = [
     {
       adUnitCode: 'div-gpt-ad-1471513102552-1',
@@ -144,7 +132,7 @@ describe('justpremium adapter', function () {
   })
 
   describe('onTimeout', function () {
-    it('onTimeout', function(done) {
+    it('onTimeout', (done) => {
       spec.onTimeout([{
         'bidId': '25cd3ec3fd6ed7',
         'bidder': 'justpremium',
@@ -165,9 +153,7 @@ describe('justpremium adapter', function () {
           'zone': 21521
         }],
         'timeout': 1
-      }]);
-
-      expect(pixelStub.calledOnce).to.equal(true);
+      }])
 
       done()
     })

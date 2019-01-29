@@ -1,20 +1,11 @@
 import { expect } from 'chai';
 import { spec } from 'modules/uolBidAdapter';
+import { newBidder } from 'src/adapters/bidderFactory';
 
 const ENDPOINT = 'https://prebid.adilligo.com/v1/prebid.json';
 
 describe('UOL Bid Adapter', function () {
-  let sandbox;
-  let queryStub;
-  let getCurrentPositionStub;
-
-  beforeEach(function() {
-    sandbox = sinon.sandbox.create();
-  });
-
-  afterEach(function() {
-    sandbox.restore();
-  });
+  const adapter = newBidder(spec);
 
   describe('isBidRequestValid', function () {
     let bid = {
@@ -97,6 +88,31 @@ describe('UOL Bid Adapter', function () {
   });
 
   describe('buildRequests', function () {
+    let queryPermission;
+    let cleanup = function() {
+      navigator.permissions.query = queryPermission;
+    };
+    let grantTriangulation = function() {
+      queryPermission = navigator.permissions.query;
+      navigator.permissions.query = function(data) {
+        return new Promise((resolve, reject) => {
+          resolve({state: 'granted'});
+        });
+      }
+    };
+    let denyTriangulation = function() {
+      queryPermission = navigator.permissions.query;
+      navigator.permissions.query = function(data) {
+        return new Promise((resolve, reject) => {
+          resolve({state: 'prompt'});
+        });
+      }
+    };
+    let removeQuerySupport = function() {
+      queryPermission = navigator.permissions.query;
+      navigator.permissions.query = undefined;
+    }
+
     let bidRequests = [
       {
         'bidder': 'uol',
@@ -157,42 +173,31 @@ describe('UOL Bid Adapter', function () {
       describe('buildRequest geolocation param', function () { // shall only be tested if browser engine supports geolocation and permissions API.
         let geolocation = { lat: 4, long: 3, timestamp: 123121451 };
 
-        beforeEach(function() {
-          getCurrentPositionStub = sandbox.stub(navigator.geolocation, 'getCurrentPosition');
-          queryStub = sandbox.stub(navigator.permissions, 'query');
-        });
-
-        it('should not contain user coordinates if browser doesnt support permission query', function () {
+        it('should contain user coordinates if (i) DNT is off; (ii) browser supports implementation; (iii) localStorage contains geolocation history', function () {
           localStorage.setItem('uolLocationTracker', JSON.stringify(geolocation));
-          navigator.permissions.query = undefined;
-          const requestObject = spec.buildRequests(bidRequests, bidderRequest);
-          const payload = JSON.parse(requestObject.data);
-          expect(payload.geolocation).to.not.exist;
-        })
-
-        it('should contain user coordinates if (i) DNT is off; (ii) browser supports implementation; (iii) localStorage contains geolocation history', function (done) {
-          localStorage.setItem('uolLocationTracker', JSON.stringify(geolocation));
-          queryStub.callsFake(function() {
-            return new Promise((resolve, reject) => {
-              resolve({state: 'granted'});
-            });
-          });
-          getCurrentPositionStub.callsFake(() => done());
+          grantTriangulation();
           const requestObject = spec.buildRequests(bidRequests, bidderRequest);
           const payload = JSON.parse(requestObject.data);
           expect(payload.geolocation).to.exist.and.not.be.empty;
+          cleanup();
         })
 
         it('should not contain user coordinates if localStorage is empty', function () {
           localStorage.removeItem('uolLocationTracker');
-          queryStub.callsFake(function() {
-            return new Promise((resolve, reject) => {
-              resolve({state: 'prompt'});
-            });
-          });
+          denyTriangulation();
           const requestObject = spec.buildRequests(bidRequests, bidderRequest);
           const payload = JSON.parse(requestObject.data);
           expect(payload.geolocation).to.not.exist;
+          cleanup();
+        })
+
+        it('should not contain user coordinates if browser doesnt support permission query', function () {
+          localStorage.setItem('uolLocationTracker', JSON.stringify(geolocation));
+          removeQuerySupport();
+          const requestObject = spec.buildRequests(bidRequests, bidderRequest);
+          const payload = JSON.parse(requestObject.data);
+          expect(payload.geolocation).to.not.exist;
+          cleanup();
         })
       })
     }

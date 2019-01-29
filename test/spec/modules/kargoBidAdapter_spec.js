@@ -1,5 +1,6 @@
 import {expect, assert} from 'chai';
 import {spec} from 'modules/kargoBidAdapter';
+import {registerBidder} from 'src/adapters/bidderFactory';
 import {config} from 'src/config';
 
 describe('kargo adapter tests', function () {
@@ -360,8 +361,7 @@ describe('kargo adapter tests', function () {
           cpm: 2.5,
           adm: '<div id="2"></div>',
           width: 300,
-          height: 250,
-          targetingCustom: 'dmpmptest1234'
+          height: 250
         },
         3: {
           id: 'bar',
@@ -397,7 +397,6 @@ describe('kargo adapter tests', function () {
         ad: '<div id="1"></div>',
         ttl: 300,
         creativeId: 'foo',
-        dealId: undefined,
         netRevenue: true,
         currency: 'USD'
       }, {
@@ -408,7 +407,6 @@ describe('kargo adapter tests', function () {
         ad: '<div id="2"></div>',
         ttl: 300,
         creativeId: 'bar',
-        dealId: 'dmpmptest1234',
         netRevenue: true,
         currency: 'USD'
       }, {
@@ -419,7 +417,6 @@ describe('kargo adapter tests', function () {
         ad: '<div id="2"></div>',
         ttl: 300,
         creativeId: 'bar',
-        dealId: undefined,
         netRevenue: true,
         currency: 'USD'
       }];

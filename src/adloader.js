@@ -12,7 +12,7 @@ const _vendorWhitelist = [
  * @param {string} url the url to load
  * @param {string} moduleCode bidderCode or module code of the module requesting this resource
  */
-export function loadExternalScript(url, moduleCode) {
+exports.loadExternalScript = function(url, moduleCode) {
   if (!moduleCode || !url) {
     utils.logError('cannot load external script without url and moduleCode');
     return;
@@ -41,7 +41,7 @@ export function loadExternalScript(url, moduleCode) {
  * @deprecated
  * Do not use this function. Will be removed in the next release. If external resources are required, use #loadExternalScript instead.
  */
-export function loadScript(tagSrc, callback, cacheRequest) {
+exports.loadScript = function (tagSrc, callback, cacheRequest) {
   // var noop = () => {};
   //
   // callback = callback || noop;

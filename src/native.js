@@ -147,7 +147,7 @@ export function fireNativeTrackers(message, adObject) {
 }
 
 /**
- * Gets native targeting key-value pairs
+ * Gets native targeting key-value paris
  * @param {Object} bid
  * @return {Object} targeting
  */
@@ -163,7 +163,7 @@ export function getNativeTargeting(bid) {
       value = value.url;
     }
 
-    if (key && value) {
+    if (key) {
       keyValues[key] = value;
     }
   });

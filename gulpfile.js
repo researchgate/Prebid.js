@@ -11,7 +11,7 @@ var uglify = require('gulp-uglify');
 var gulpClean = require('gulp-clean');
 var KarmaServer = require('karma').Server;
 var karmaConfMaker = require('./karma.conf.maker');
-var opens = require('opn');
+var opens = require('open');
 var webpackConfig = require('./webpack.conf');
 var helpers = require('./gulpHelpers');
 var concat = require('gulp-concat');
@@ -76,18 +76,11 @@ function escapePostbidConfig() {
 };
 escapePostbidConfig.displayName = 'escape-postbid-config';
 
-function lint(done) {
-  if (argv.nolint) {
-    return done();
-  }
-  const isFixed = function(file) {
-    return file.eslint != null && file.eslint.fixed;
-  }
-  return gulp.src(['src/**/*.js', 'modules/**/*.js', 'test/**/*.js'], {base: './'})
-    .pipe(eslint({fix: true}))
+function lint() {
+  return gulp.src(['src/**/*.js', 'modules/**/*.js', 'test/**/*.js'])
+    .pipe(eslint())
     .pipe(eslint.format('stylish'))
-    .pipe(eslint.failAfterError())
-    .pipe(gulpif(isFixed, gulp.dest('./')));
+    .pipe(eslint.failAfterError());
 };
 
 // View the code coverage report in the browser.
@@ -102,7 +95,6 @@ function viewCoverage(done) {
   opens('http://localhost:' + coveragePort);
   done();
 };
-
 viewCoverage.displayName = 'view-coverage';
 
 // Watch Task with Live Reload
@@ -141,6 +133,7 @@ function makeDevpackPkg() {
   return gulp.src([].concat(moduleSources, analyticsSources, 'src/prebid.js'))
     .pipe(helpers.nameModules(externalModules))
     .pipe(webpackStream(cloned, webpack))
+    .pipe(replace('$prebid.version$', prebid.version))
     .pipe(gulp.dest('build/dev'))
     .pipe(connect.reload());
 }
@@ -158,10 +151,12 @@ function makeWebpackPkg() {
   return gulp.src([].concat(moduleSources, analyticsSources, 'src/prebid.js'))
     .pipe(helpers.nameModules(externalModules))
     .pipe(webpackStream(cloned, webpack))
+    .pipe(replace('$prebid.version$', prebid.version))
     .pipe(uglify())
     .pipe(gulpif(file => file.basename === 'prebid-core.js', header(banner, { prebid: prebid })))
     .pipe(optimizejs())
-    .pipe(gulp.dest('build/dist'));
+    .pipe(gulp.dest('build/dist'))
+    .pipe(connect.reload());
 }
 
 function gulpBundle(dev) {
@@ -229,7 +224,12 @@ function newKarmaCallback(done) {
     if (exitCode) {
       done(new Error('Karma tests failed with exit code ' + exitCode));
     } else {
-      done();
+      if (argv.browserstack) {
+        // process.exit(0);
+        done(); // test this with travis (or circleci)
+      } else {
+        done();
+      }
     }
   }
 }
@@ -269,6 +269,26 @@ function coveralls() { // 2nd arg is a dependency: 'test' must be finished
   // have to read it.
     .pipe(shell('cat build/coverage/lcov.info | node_modules/coveralls/bin/coveralls.js'));
 }
+
+// Watch Task with Live Reload
+gulp.task('watch', function () {
+  gulp.watch([
+    'src/**/*.js',
+    'modules/**/*.js',
+    'test/spec/**/*.js',
+    '!test/spec/loaders/**/*.js'
+  ], ['build-bundle-dev', 'test']);
+  gulp.watch([
+    'loaders/**/*.js',
+    'test/spec/loaders/**/*.js'
+  ], ['lint']);
+  connect.server({
+    https: argv.https,
+    port: port,
+    root: './',
+    livereload: true
+  });
+});
 
 function e2eTest() {
   var cmdQueue = [];
